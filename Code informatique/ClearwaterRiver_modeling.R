@@ -42,7 +42,6 @@ data <- preprocess_data(  # Appuyer la méthode de NA imputing avec la littérat
 
 # ================== Analyse préliminaire ======================================
 # Vérification de la dépendance séquentielle ----
-# Vérification de la dépendance séquentielle ----
 verify_serial_dependence(data)
 
 
@@ -66,40 +65,7 @@ u_vec <- quantile(data$prcp_agg, probs = p_vec)
 
 u <- treshold_selection(data, u_vec, method='bader', gf_test = 'ad')
 
-
-t0 <- data %>% select(start_date) %>% unlist(use.names = F) %>% as.numeric()
-
-
-gpD_trend_nll <- function(param) {
-   x0 <- function(s) {
-         param[1] + param[2] *s
-   }
-   dgpd <- function(s) {
-      excedences <- data$prcp_agg - x0(s)
-      excedences <- excedences[excedences > 0]
-      dGPD(excedences, param[3], param[4])
-   }
-   if (max(x0(t0)) >= quantile(data$prcp_agg, 0.90))
-      return(1e+10)
-   -sum(log(dgpd(t0)))
-}
-
-
-optim_GPD_trend <- optim(c(u, 0, params_GPD), gpD_trend_nll)
-gpD_Notrend_nll <- -sum(log(dGPD(data$prcp_agg-u, params_GPD[1], params_GPD[2])))
-optim_GPD_trend$value
-optim_GPD_Notrend
-Q <- 2* (optim_GPD_Notrend - optim_GPD_trend$value)
-1-pchisq(Q, 1)
-
 data.extremes <- calculate_excedences(data, u, calculate_W=T)
-
-
-params_GPD <- fit_GPD(data.extremes$excedence, method = 'mm')
-
-
-
-# ================== Distribution des précipitations saisonnières ==============
 data.normales <- data %>%
    filter(prcp_agg < u) %>%
    select(prcp_agg, start_date) %>%
@@ -107,6 +73,7 @@ data.normales <- data %>%
    summarise(sum(prcp_agg), .groups='drop') %>%
    rename('year' = `year(start_date)`, total_prcp = `sum(prcp_agg)`)
 
+# ================== Distribution des précipitations saisonnières ==============
 Z <- data.normales$total_prcp
 mktest <- MannKendall(Z)$sl
 
@@ -297,15 +264,19 @@ TVaR <- function(p, year) {
    TVaR <- mean(sorted_obs[sorted_obs > VaR])
    return(TVaR)
 }
-global_quantiles <- function(p) {
+qglobal <- function(p) {
    vec_sim <- as.vector(simulations)
    n <- length(vec_sim)
    q <- sort(vec_sim)[ceiling(p*n)]
    return(q)
 }
-globap_cdf <- function(x) {
+pglobal <- function(x) {
    vec_sim <- as.vector(simulations)
    ecdf(vec_sim)(x)
+}
+dglobal <- function(x) {
+   vec_sim <- as.vector(simulations)
+   ecdf(vec_sim)(x + 0.5) - ecdf(vec_sim)(x - 0.5)
 }
 
 
@@ -316,11 +287,17 @@ annual_prcp <- data %>%
    unlist(use.names = F)
 
 n <- length(years)
-qqplot(annual_prcp, global_quantiles((1:n)/(n+1)),
+qqplot(annual_prcp, qglobal((1:n)/(n+1)),
        xlab='Empirical quantiles',
        ylab='Theorical quantiles')
-abline(0,1, col='blue')
+abline(0, 1, col='blue')
 
-ks.test(annual_prcp, globap_cdf)
-ad.test(annual_prcp, globap_cdf)
+car::qqPlot(annual_prcp, "global",
+            xlab='Empirical quantiles',
+            ylab='Theorical quantiles',
+            lwd=0.5, id=F)
+abline(0, 1, col='red')
+
+ks.test(annual_prcp, pglobal)
+ad.test(annual_prcp, pglobal)
 # ------------------------------------------------------------------------------
