@@ -1,0 +1,332 @@
+\documentclass[11pt,letterpaper]{article}
+\author{Alexandre Lepage}
+\usepackage[left=2.00cm, right=2.00cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[frenchb]{babel} % Reconnaître les caractères francophones.
+\usepackage[procnames]{listings}
+\usepackage[ruled,vlined, linesnumbered]{algorithm2e} % Faire de jolies algorithmes comme dans les cours d'IFT.
+\usepackage[squaren]{SIunits}
+\usepackage{amsfonts}
+\usepackage{amsmath} % pour utiliser des maths de base 
+\usepackage{amssymb} % pour faire \mathcal{}=>des lettres ''cursives''
+\usepackage{amsthm} % La petite boîte de fin de preuve
+\usepackage{array}
+\usepackage{bbm}
+\usepackage{booktabs}
+\usepackage{braket}
+\usepackage{breakcites} % Faire en sorte que les citations ne sortent pas dans la marge
+\usepackage{caption}
+\usepackage{color}
+\usepackage{comment}
+\usepackage{diagbox} % diagonale dans les tableaux
+\usepackage{dsfont} % Faire des belles indicatrices                         
+\usepackage{enumitem}
+\usepackage{enumitem} % Permet d'avoir plus de flexibilité dans les enumerations.
+\usepackage{epsfig}
+\usepackage{etoolbox} % Ajouter plus d'espace entre les éléments de l'environnement "cases"
+\usepackage{fancyvrb} % Les varbatims gardent l'indentation
+\usepackage{float} % placer les tableaux et images où tu veux
+\usepackage{graphicx} % Insérer des graphiques
+\usepackage{graphicx} % pour importer des images...http://www.tex.ac.uk/cgi-bin/texfaq2html?label=figurehere
+\usepackage{hyperref} % Faire des hyperliens
+\usepackage{lipsum}
+\usepackage{listings}
+\usepackage{mathrsfs} % Faire le symbole de la transformée de Laplace
+\usepackage{mathtools}
+\usepackage{multicol}
+\usepackage{multirow} % Fusionner des lignes dans un tableau
+\usepackage{pgfplots}
+\usepackage{pst-node}
+\usepackage{setspace} % Ajouter plus d'espace entre les éléments de l'environnement "cases"
+\usepackage{soul} % Surligner des passages mathématiques
+\usepackage{subcaption} % Avoir plusieurs sous-figures (graphiques) dans une figures et pouvoire les étiqueter
+\usepackage{titlesec} % automatique, pour faire des sous-titres moins laids
+\usepackage{verbatim} % Inclure un fichier .text en verbatim
+\usepackage{wasysym} 
+\usepackage{wrapfig} % Permet d'intégrer des graphiques à travers du texte.
+\usepackage{xcolor}
+
+
+\pgfplotsset{width=10cm, compat=1.9}
+
+% Changer la couleur des hyperliens
+\hypersetup{colorlinks = true,
+	allcolors  = blue, % default color = black
+	%	citecolor  = black
+}  
+
+
+% redefine \VerbatimInput
+\RecustomVerbatimCommand{\VerbatimInput}{VerbatimInput}%
+{fontsize=\footnotesize,
+	%
+	frame=lines,  % top and bottom rule only
+	framesep=2em, % separation between frame and text
+	rulecolor=\color{Gray},
+	%
+	label=\fbox{\color{Black}data.txt},
+	labelposition=topline,
+	%
+	commandchars=\|\(\), % escape character and argument delimiters for
+	% commands within the verbatim
+	commentchar=*        % comment character
+}
+
+
+\newtheorem{lemme}{Lemme}
+\newtheorem{preuve}{Preuve}
+\newtheorem{code}{Code informatique}
+\newtheorem{exemple}{Exemple}
+\newtheorem{scenario}{Scénario}
+\newtheorem{algo}{Algorithme}
+\newtheorem{definition}{Définition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{propriete}{Propriété}
+\newtheorem{remarque}{Remarque}
+\newtheorem{theorem}{Théorème}
+\newtheorem{corollaire}{Corollaire}
+
+
+%\renewcommand{\arraystretch}{5}
+\makeatletter
+\patchcmd{\env@cases}{1.2}{2}{}{}
+\makeatother
+
+
+% Keywords command
+\providecommand{\keywords}[1]
+{
+	\small	
+	\textbf{\textit{Keywords---}} #1
+}
+
+\title{Un modèle de précipitations printanières en contexte d'inondation}
+\author{
+	Fateh Chebana
+	\thanks{Institut national de recherche scientifique, Québec, Qc, Canada}
+	\and Hélène Cossette
+	\thanks{École d'actuariat, université Laval, Québec, Qc, Canada}
+	\and Alexandre Lepage
+	\footnotemark[2]
+	\footnote{
+		Tel.: 581-984-3704, E-mail: \url{alexandre.lepage.3@ulaval.ca}
+	}
+	\and Étienne Marceau
+	\footnotemark[2]
+}
+\date{\today}
+
+
+\begin{document}
+	\renewcommand{\tablename}{Tableau}
+	\renewcommand{\figurename}{Illustration}
+	\renewcommand{\labelitemi}{$\bullet$}
+	\renewenvironment{proof}{\noindent{\bfseries Preuve.}}{\qed\\}
+	\renewcommand{\natural}{\mathbb{N}}
+	\newcommand{\reel}{\mathbb{R}}
+	\newcommand{\E}{\mathbb{E}}
+	\renewcommand{\P}{\mathbb{\mathbb{P}}}
+	
+	
+	\maketitle
+	\begin{abstract}
+		Dans cet ouvrage, nous partons de \cite{jalbert2019modelling} pour proposer une modèle alternatif de prédiction des pluies printanières totales dans un contexte de modélisation des inondations saisonnières. Notre approche bonifie les modèles DDF (\textit{Dept, Duration, Frequency}) communément utilisés en pratique en ajoutant les notions de processus d'arrivée non stationnaire tel que présenté dans \cite{nelson2011modelling}. De plus, nous faisons une analyse exhaustive de la dépendance entre les différentes variables en jeux à l'aide de la théorie des copules telle que décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
+	\end{abstract} \vspace{10pt}
+	\keywords{Processus d'arrivée, processus non stationnaire, dépendance, copules, valeurs extrêmes, précipitations, distribution Pareto généralisée, excès de seuil.}
+	
+	
+	\section{Introduction}
+
+	Autant en assurance qu'en hydrologie, le sujet des inondations suscite l'intérêt des chercheurs qui tentent de modéliser ces événements afin de mieux se préparer à d'éventuelles catastrophes. Entre autres, le débordement du lac Champlain en 2011 a suscité l'intérêt de \cite{riboust2016analysis} qui a chercher à connaître les éléments déclencheurs d'une telle catastrophe. Lors de son étude, il arriva à la conclusion que, bien que la fonte des neiges soit une variable explicative importante, c'est l'accumulation de précipitations extrêmes dans la période de mars à juin qui a été la cause principale dans ce cas.\\
+	
+	{\red Parler de \cite{kao2007bivariate}. Lire aussi \cite{vandenberghe2010fitting}}\\
+	
+	Suite à la publication de \cite{riboust2016analysis}, \cite{jalbert2019modelling} a cherché à prédire l'accumulation des pluies printanières du lac Champlain afin d'estimer l'amplitude maximale qu'un tel événement aurait pu avoir et de calculer l'espérance du temps qui s'écoulera avant qu'un incident d'une telle ampleur survienne à nouveau. 
+	
+	Le modèle ainsi conçu sépare la modélisation des pluies en deux composantes. Une portion régulière qui représente la quantité de pluie totale tombée selon les normes saisonnières et une portion extrême où on considère les jours où la quantité de pluie tombée dépasse un certain seuil. Tandis que la première est bien modélisée avec une loi normale, la seconde nécessite plus de travail.
+	%
+	En effet, afin de modéliser la quantité quotidienne de pluie tombée dans les cas extrêmes, \cite{jalbert2019modelling} utilise la loi Pareto généralisée, aussi connue sous l'appellation \textit{Peaks-Over-Threshold}(POT). Cependant, l'estimateur du paramètre de forme de la loi POT calculé sur les valeurs quotidiennes faisaient en sorte que la distribution avait un support fini et la probabilité qu'un événement de l'envergure de 2011 se produise était quasiment nulle. Conséquemment, \cite{jalbert2019modelling} proposa une extension du modèle POT où il divise la quantité de pluie tombée lors d'une journée de pluie extrême par la proportion que cette quantité représente sur l'ensemble des précipitations tombées au cours d'une période de pluie continue. Se faisant, il n'y a plus de problème de borne supérieure à la distribution de la sévérité.\\
+	
+	Le modèle que nous proposons est une alternative à celui de \cite{jalbert2019modelling}. Il reprend le concept de regroupement des jours en périodes de pluie continue, mais il adopte une approche légèrement plus intuitive en s'inspirant grandement de la méthodologie proposée dans \cite{zhang2019copulas} et \cite{shaw2010hydrology}. 
+%		
+%		D'ailleurs notre modèle s'inscrit dans la catégorie des modèles de type DDF (\textit{Dept, Duration, Frequency}). Celui-ci
+%		
+	Comme il est expliqué, entre autre, au chapitre 9.6 de \cite{shaw2010hydrology}, les modèles de précipitations utilisés dans la pratique, communément appelés modèles DDF (Dept, Duration, Frequency), sous-tendent les variables de sévérité de durée et de fréquence, lesquelles ont toutes leur importance. Or, \cite{jalbert2019modelling} se concentre principalement sur la sévérité. La fréquence est modélisée avec une loi de Poisson conditionnelle-gamma, mais l'aspect de la durée est négligé. Notre approche, quant à elle, s'intéresse à toutes ces variables aléatoires et aux relations qui les unissent conformément à \cite{zhang2019copulas}. Nous incorporons des notions des processus de renouvellement aux concepts communément utilisés en hydrologie afin d'améliorer la précision du modèle de fréquence et les liens de dépendance sont modélisés à l'aide de la théorie des copules. Également, une attention particulière est apportée à la non-stationnarité des distributions de probabilité afin de prendre en compte le contexte des changements climatiques.\\
+	
+	L'article est découpé comme suit: la section \ref{sect_model} présente le modèle proposé...
+
+
+	\section{Le modèle proposé}\label{sect_model}
+	L'intuition derrière le modèle proposé est de considérer les périodes de précipitations continues comme des événements uniques en agrégeant la quantité de pluie tombée lors de celles-ci. Se faisant, non seulement on considère les jours où le volume d'eau tombé sort de l'ordinaire, mais on considère également les séquences où le nombre de jours de pluie continue est anormalement élevé.
+	%
+	De plus, on considère que le nombre d'événements extrêmes se produisant dans une année donnée est modélisé par un processus de renouvellement. Également, on s'intéressera à la présence de dépendance unissant les v.a. en jeu.
+	
+	Comme les données étudiées dans la section \ref{sect_etude_de_cas} ne présente aucun signe d'auto-corrélation, on pose ici l'hypothèse d'indépendance séquentielle sur les distributions étudiées. En revanche, aucune hypothèse n'est faite sur la stationnarité des distributions puisque de fortes évidences pointe vers la non-stationnarité de celles-ci.
+	
+	
+	\subsection{Description du modèle}
+	On définit la suite de v.a. $\underline{Y} = \{Y_l\}_{l=1}^{91}$ comme la quantité en mm de pluie tombée lors des 91 jours du printemps, c.-à-d. du $1^{\mathrm{er}}$ avril au 30 juin, pour une année donnée. Selon \cite{riboust2016analysis} et \cite{jalbert2019modelling}, cette période de temps est la plus critique lors des crues printanières. 
+	
+	Soit $\underline{\mathcal{C}} = \{\mathcal{C}_j, j\in\natural^{+}\}$, les périodes de pluies continues de cette même année. En concordance avec \cite{jalbert2019modelling}, on définit une période de précipitations continues comme une séquence de jours de pluie séparées par au moins une journée d'ensoleillement (0 mm de pluie).
+	%
+	On définit $\underline{K} = \{K_j, j\in\natural^+\}$ comme la suite de v.a. de la quantité de pluie totale tombée lors de la période $\mathcal{C}_j$ telle que $K_j = \sum_{l\in \mathcal{C}_j} Y_l$.
+	
+	Pour un seuil critique $u$, on sépare les événements en deux sous-ensembles
+	$\mathcal{Z} = \lbrace j: K_j \leq u \rbrace$ et 
+	$\mathcal{X} = \lbrace j: K_j > u \rbrace.$
+	%
+	En ce qui a trait aux événement extrêmes, afin de faciliter les prochaines étapes, posons
+	$\underline{X} =\{X_i, i\in\natural^+\} = \{K_j: j \in \mathcal{X}\}.$
+	
+	Soient $\underline{T} = \{T_i, i\in\natural\}$ la suite de v.a. représentant le temps d'arrivé des événements $\{\mathcal{C}_j, j\in\mathcal{X}\}$ et $\underline{D}= \{D_i, i\in\natural\}$, la suite de v.a. représentant leur durée.
+	On pose également la suite de v.a. $\underline{W} = \{W_i, i\in\natural\}$, représentant les temps séparant les événements extrêmes telles que $W_i := T_i - T_{i-1} - D_{i-1} = T_{i} - T_{i-1}^*,$ où
+	$T_i^* := T_0 + \sum_{k=0}^{i} W_k + D_k$
+	et $T_0$ correspond au $1^{\mathrm{er}}$ avril de l'année à l'étude, traduite en format numérique selon une date de référence choisie arbitrairement. Par convention, on a $W_0 = D_0 = 0$.
+	
+	Soit $N$, le processus de renouvellement représentant le nombre de périodes de pluies continues où la quantité cumulée d'eau par événement dépasse un seuil critique $u$. Par définition des processus de renouvellement, pour un accroissement correspondant à une saison printanière ($[T_0, T_0+91]$), on a 
+	\begin{equation}\label{processus_renouvellement}
+		N := \sum_{i=1}^{\infty} \mathds{1} \{T_i^* \leq T_0 + 91\} = \sum_{i=1}^{\infty} \mathds{1} \{T_i + D_i \leq T_0 + 91\}.
+	\end{equation}
+	
+	Afin d'étudier la quantité de pluie totale tombée lors d'une saison, on définit la v.a. des précipitations non-extrêmes totales comme $Z := \sum_{j \in \mathcal{Z}} K_j$, de même que la v.a. des précipitations extrêmes totales
+	\begin{equation}
+		V := \sum_{i=1}^{\infty} X_i\, \mathds{1}\{T_i + D_i \leq T_0 + 91\}.
+	\end{equation}
+	On peut donc modéliser la quantité de pluie totale tombée pendant une saison printanière avec $S = Z + V$. La dépendance unissant les variables en jeu est modélisée avec la théorie des copules décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
+	
+	
+	\subsection{Choix des distributions marginales}
+	Avec la théorie des valeurs extrêmes, comme on cherche à modéliser l'ensemble des précipitations qui sortent des normales saisonnières, la méthode POT est tout indiquée. Alors on pose $(X_i-u|X_i>u)\sim \mathrm{GPD}(\xi, \sigma)$ telle que la fonction de répartition s'exprime comme
+	\begin{equation}
+		F_u(x) := \begin{cases}
+			1-(1+\xi x/\sigma)^{-1/\xi}, & \xi \neq 0,\\
+			1-\exp(-x/\sigma), & \xi = 0,
+		\end{cases}
+	\end{equation}
+	où $x\geq0$, $\sigma>0$, $\xi \in\reel$ et $1+\xi x/\sigma > 0$, pour un seuil $u>0$.
+	À noter que la paramétrisation de la loi est grandement influencée par la valeur attribuée au paramètre $u$, lequel peut être obtenu par optimisation tel que présenté dans \cite{bader2016automated} et \cite{bader2018automated} ou encore avec \cite{northrop2015cross}. Bien que certains auteurs ({\red Citer certains auteurs}) utilisent un seuil non stationnaire, nous avons décidé d'utiliser un seuil fixe. Les raisons étant que ce n'est pas parce qu'il existe une tendance dans la quantité d'eau qui tombe dans une année qu'un événement est nécessairement plus extrême qu'avant (boîteux...), ainsi que par souci de simplicité ({\red Appuyer avec la littérature}){\red ...à revoir...}\\
+	
+	En ce qui a trait à la modélisation de la durée des périodes de pluie, l'approche proposée s'appuie sur... {\red Trouver des références...}
+	
+	Puis, pour la v.a. des temps inter-occurrences, les distributions considérées sont  l'exponentielle, la Weibull et la gamma puisque... {\red Trouver des références...}\\
+	
+	
+	
+	
+	
+	\section{La méthodologie}
+	\paragraph{Sujets:}
+	\begin{enumerate}
+		\item Clustering
+		\item Vérification de l'indépendance séquentielle
+		\item Sélection de seuil automatique
+		\item Vérification de la stationnarité
+		\item Distribution de l'excédent de seuil
+		\item Distribution des normales de saison
+		\item Distribution des temps inter-occurrences
+		\item Sélection de la copule
+		\item Études de cas
+	\end{enumerate}
+	
+	
+	Relativement au traitement des distributions non stationnaires, les approches proposées dans {(\red À lire: \cite{nelson2011modelling})}, \cite{khaliq2006frequency} et dans \cite{chebana2021multivariate} sont considérées. 
+	
+	Du point de vue des distributions marginales, certaines v.a. présentent de fortes évidences de non-stationnarité. Afin d'en tenir compte dans la paramétrisation des lois de probabilité, on détermine que la moyenne est une fonction linéaire du temps d'arrivée $\{T_i\}_{i\geq 0}.$ Puis le paramètre d'échelle de la loi devient une fonction de cette moyenne. Pour ce qui est du paramètre de forme de ces lois, celui-ci est présumé comme étant stationnaire.\\
+	
+	Du point de vue de la stationnarité de la distribution des copules, l'approche proposée par \cite{chebana2021multivariate} a été considérée. Cependant, étant donnée la faible quantité d'observations extrêmes dans le jeu de données, la méthode est très instable. Conséquemment, par souci de simplicité, la corrélation entre les variables aléatoires est présumée stable dans le temps.\\
+	
+	Afin de vérifier l'hypothèse d'indépendance séquentielle, l'approche proposée par \cite{genest2004test} est utilisée. Cependant, il est important de mentionner que cette approche suppose que la séquence d'observations sur laquelle le test est effectué est continue. Or, dans le cas présent, on ne considère que les saisons printanières de chacune des années. Conséquemment, on se retrouve avec des intervalles de temps disjoints. De plus, comme le nombre d'observations par saison est généralement faible, le test statistique peut être non fiable. Donc, pour tester l'hypothèse d'indépendance séquentielle, l'approche employée fût d'effectuer le test de \cite{genest2004test} pour chacune des années indépendamment, puis d'observer les quantiles empiriques obtenus sur les \textit{p-values}. À noter que la méthode utilisée n'est pas appuyé par la littérature, mais que la création d'un test formel pour ce genre de situation pourrait devenir un sujet de recherche intéressant que nous laissons à d'autres.\\
+	
+	Pour ce qui est de la modélisation de la dépendance, celle-ci est effectuée selon la théorie des copules décrite dans \cite{joe1997multivariate} et dans \cite{nelsen2006introduction}.
+	Dans le contexte particulier des précipitations, on s'intéressera particulièrement à \cite{zhang2019copulas} {\red élaborer davantage...est-ce que je considère les copules en vigne ou je continue avec des copules bivariées ? Lire aussi \cite{salvadori2007use}}. Également, dans le contexte des valeurs extrêmes, on considère \cite{gudendorf2010extreme} qui recommande, entre-autre, les copules de Gumbel, de Tawn et de Galambos. En théorie, les copules elliptiques sont appréciées dans la littérature en hydrologie étant donnée leur flexibilité et la facilité avec laquelle on peut les paramétrer. Cependant, dans le contexte de la modélisation de valeurs extrêmes, nous les écartons, conformément aux conclusions de \cite{renard2007use}, puisque cette famille de copule tend à sous-estimer la dépendance lorsque les marginales sont constituées à la fois de v.a. extrêmes et de v.a. non-extrêmes.	
+	
+	
+	\section{Études de cas}\label{sect_etude_de_cas}
+	
+	Copule BB1: Voir \cite{joe1997multivariate}
+		
+		\subsection{Lac Champlain}
+		La station \texttt{USW00014742} située à Burlington, au Vermont comporte quelques données manquantes. Afin d'interpoler sur celles-ci, l'approche recommandée par \cite{shaw2010hydrology} est de moyenner les observations obtenues sur les stations avoisinantes. De plus, comme cette station a fermé le 3 juin 1943, nous avons compensé, comme indiqué par \cite{jalbert2019modelling}, avec la station de l'aéroport de Burlington, soit la station \texttt{USW00014742}, laquelle a commencé ses opérations le $1^{\mathrm{er}}$ décembre 1940.\\
+		
+		Pour le test d'indépendance séquentielle, les données du Lac Champlain, les résultats statistiques descriptives liées aux \textit{p-values} obtenues avec le test de \cite{genest2004test} sur chacune des années sont résumées dans le tableau \ref{tbl_Lac_Champlain_Serial_dependence}.
+		
+		\begin{table}[ht]
+			\centering
+			\begin{tabular}{lrrrrrr}
+				\toprule
+				\multicolumn{7}{l}{Nombre d'événements extrêmes par année}\\
+				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
+				\hline
+				& 9.00 &  17.00 &  18.00  & 18.23 &  20.00  & 24.00\\
+				\midrule[1pt]
+				\multicolumn{7}{l}{\textit{P-values} pour le test d'indépendance séquentielle}\\
+				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
+				\hline
+				$\underline{K}$ & 0.006 & 0.208 & 0.466 & 0.480 & 0.745 & 0.994 \\ 
+				\bottomrule
+			\end{tabular}
+		\caption{Statistiques descriptives des \textit{p-values} obtenues sur chacune des années lors du test d'indépendance séquentielle proposé par \cite{genest2004test} pour le Lac Champlain.}
+		\label{tbl_Lac_Champlain_Serial_dependence}
+		\end{table}
+	
+		Afin de vérifier la stationnarité des distributions, le test de Mann-Kendall révèle une statistique de test égale à 0.0401 et une $p-value$ pour l'hypothèse alternative bi-latérale de 0.0028164. Conséquemment, on rejette l'hypothèse nulle du test et on conclu qu'il existe une tendance ascendante dans la distribution de la suite de v.a. $\underline{K}$.\\
+		
+		Pour ce qui est de la détermination du seuil $u$ servant à séparer les événements extrêmes des saisonniers, on applique l'approche proposée par \cite{bader2018automated} pour trouver un seuil optimal de 26.67mm de pluie. Cette quantité correspond au $86.39^{\mathrm{e}}$ percentile des observations empiriques de $\underline{K}$ et permet de conserver 340 observations en excédent de seuil.
+		%		
+		Conformément à \cite{choulakian2001goodness}, les tests d'Anderson-Darling et de Crame-von Mises pour vérifier l'adéquation des excès de seuil avec la famille de loi GPD offrent des \textit{p-value} de 0.132 et 0.130. Conséquemment, on ne peut rejeter l'hypothèse nulle que les excès de seuil sont issues de la loi de Pareto généralisée au seuil de 5\%.
+		
+		Pour modéliser $Z$, comme la p-value du test de Mann-Kendall est de 0.512, on ne peut rejeter l'hypothèse nulle qu'il n'y a pas de tendance. Conséquemment, une simple loi Normale est entraînée pour modéliser les précipitations saisonnières non-extrêmes. L'illustration \ref{qqplot_Z} atteste de l'adéquation de la loi avec les données.
+		 Ainsi, on y voit que la loi normale stationnaire est adéquate, mais que cette adéquation n'est pas parfaite. D'ailleurs, le test de Shapiro-Wilk donne une p-value de 0.030, laissant présager que les données ne sont pas réellement normales... {\red à retravailler... trouver une loi alternative à la loi normale...}
+		\begin{figure}[ht]
+			\centering
+			\includegraphics[width=0.5\textwidth]{graphiques/qqplot_Z}
+			\caption[QQ-plot de Z]{Diagramme quantile-quantile de Z: La ligne bleue présente la tendance des points de rencontre entre les quantiles. Les pointillés présentent l'intervalle de confiance au seuil de 5\% pour la droite de tendance et la ligne rouge est la diagonale d'adéquation parfaite. L'objectif est que la diagonale rouge se situe dans l'intervalle de confiance.}
+			\label{qqplot_Z}
+		\end{figure}
+		Faute d'avoir des test d'adéquation tenant compte de la non-stationnarité, on utilise les statistiques d'Anderson-Darling et de Kolmogorov-Smirnov pour vérifier l'adéquation de manière quantitative. Les seuils observés de ces tests sont de 
+
+		Du point de vue des excédents de seuil, le test de Mann-Kendall offre une statistique de test de 0.1705 et de 0.5681. Conséquemment, au seuil de 5\%, on ne peut rejeter l'hypothèse nulle que les données proviennent de la loi normale non stationnaire ainsi paramétrée.
+		
+		\subsection{Lac Claire}
+		
+	
+	\section{Discussion}
+	--- \href{https://coop-ist.cirad.fr/content/download/4909/36893/version/2/file/Rediger-discussion-conclusion-article-scientifique.pdf}{How to write a Discussion} --- (À rédiger tout de suite après les résultats)
+	
+	Ajouter les points suivants:
+	\begin{enumerate}
+		\item \textbf{donnez du poids à votre travail} (Mettez toujours en valeur vos résultats par rapport à ceux des autres, et non l’inverse)
+		\item \textbf{Interpréter les résultats}
+		\item \textbf{Conséquences des résultats}
+		\item Placez les arguments les plus importants au début de la discussion
+	\end{enumerate}
+
+	\paragraph{Limites}: Dans la méthodologie utilisée, mentionnons que le test statistique pour valider l'indépendance séquentielle des données utilisée est expérimentale. Également, la quantité de données ne permet pas d'avoir une appréciation fiable de la stationnarité de la dépendance entre les variables conformément à \cite{chebana2021multivariate}. Ceci étant dit, les hypothèses de stationnarité de la dépendance et de l'indépendance séquentielle des variables aléatoires réduit considérablement la complexité du modèle. En ce qui a trait à la principale faiblesses du modèle par rapport à ceux n'agrégeant pas les jours de pluie est que cette agrégation réduit considérablement le nombre d'observations disponibles pour entraîner le modèle. Malgré tout, les résultats obtenus sont excellents et le fait de considérer des périodes de plusieurs jours fait en sorte que la loi GP ainsi entraînée obtient un estimateur de forme lui permettant d'avoir un support non fini.
+	
+	\paragraph{conclusion:} Un paragraphe concluant la discussion
+	\begin{enumerate}
+		\item redonnez le point fort, c’est-à-dire le résultat majeur et son apport original dans le champ scientifique concerné : Nos résultats ont montré que... ;
+		\item ne terminez jamais sur les travaux des autres, car cela met en doute la validité du travail présenté et cela en diminue la portée. En conséquence, la conclusion ne comporte aucune référence bibliographique ;
+		\item évitez les formules du type : il se pourrait que… Il serait possible de… Il pourrait être suggéré…
+		Éventuellement… ;
+		\item évitez de suggérer des études à plus grande échelle ! Cela sous-entend qu’elles doivent être conduites pour vérifier ce que vous avez fait ;
+		\item évitez de terminer par : Nous sommes en train d'étudier… Le relecteur répliquera : Plutôt que de publier cet article, attendons les résultats !
+	\end{enumerate}
+	
+	\subsection{Pour aller plus loin ({\red à inclure ?})}
+	Pour aller plus loin dans la construction du modèle, il resterait à considérer, non seulement le temps, mais aussi l'espace dans le modèle. En effet, \cite{baigorria2007understanding} démontre qu'il existe une forte corrélation entre les stations avoisinantes. À cette fin, certains auteurs utilisent des méthodes de régression telles que \cite{hession2011spatial} et \cite{begueria2006mapping} afin de réaliser un lissage spatial des paramètres de leur modèle de précipitations. Cependant, une telle approche sous-tend l'hypothèse que la dépendance unissant les différentes stations est linéaire. Or, comme l'a démontré \cite{zhang2019copulas} cette relation n'est pas linéaire puisque la dépendance tend à être plus forte dans les ailes de distributions conjointes. C'est pourquoi ce dernier propose l'utilisation de copules en vignes. Cependant, cette dernière approche ajoute une grande complexité au modèle et ne permet pas de faire un lissage à grande échelle. Ainsi, pour aller plus loin, on pourrait tester une approche utilisant les réseaux de neurones convolutifs récurrents telle que présentée dans \cite{liu2016application}.\\
+	
+	Finalement, pour revenir à la motivation initiale de \cite{jalbert2019modelling} et de notre modèle, l'objectif ultime serait de prédire les inondations de manière exhaustive. Pour se faire, en s'inspirant de \cite{riboust2016analysis}, quelqu'un pourrait proposer un modèle tri-varié où les variables en jeu seraient les précipitations hivernales ainsi que la température et les précipitations printanières. Ainsi, on aurait un modèle complet pour prédire la quantité totale d'eau accumulée lors du printemps.
+	
+
+	
+		
+	\section*{Remerciements}
+	L'auteur aimerait remercier l'INRS ainsi que la Chaire d'actuariat de l'Université Laval pour avoir financé ce projet. Il aimerait également remercier les professeurs Étienne Marceau et Hélène Cossette pour leurs conseils et commentaires, de même que Fateh Chebana pour avoir supervisé le projet.
+		
+	
+	\bibliographystyle{apalike}
+	\bibliography{BibHydrologie}		
+	
+\end{document}

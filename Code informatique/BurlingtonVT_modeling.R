@@ -70,7 +70,7 @@ data <- preprocess_data(  # Appuyer la méthode de NA imputing avec la littérat
 
 # ================== Analyse préliminaire ======================================
 # Vérification de la dépendance séquentielle ----
-verify_serial_dependence(data, return_xtable=T)
+verify_serial_dependence(data)
 
 
 # Vérification de la stationnarité ----
@@ -79,20 +79,12 @@ data %>% ggplot(aes(x=start_date, y=prcp_agg)) +
    geom_path() +
    geom_smooth()
 
-data %>% filter(time_since_last < 52) %>%
-   select(time_since_last) %>% unlist() %>% MannKendall()
+data %>% filter(time_since_last < 52) %>% select(time_since_last) %>% unlist() %>% MannKendall()
 MannKendall(data$time_since_last)
-data %>% 
-   # filter(time_since_last < 52) %>%
-   ggplot(aes(x=start_date, y=time_since_last)) + 
+data %>% ggplot(aes(x=start_date, y=time_since_last)) + 
    geom_path() +
    geom_smooth()
 
-MannKendall(data$duration)
-data %>% 
-   ggplot(aes(x=start_date, y=duration)) + 
-   geom_path() +
-   geom_smooth()
 
 # ================== Séparation en données extrêmes et données normales.========
 set.seed(42)
@@ -109,7 +101,6 @@ data.normales <- data %>%
    summarise(sum(prcp_agg), .groups='drop') %>%
    rename('year' = `year(start_date)`, total_prcp = `sum(prcp_agg)`)
 
-
 # ================== Distribution des précipitations saisonnières ==============
 Z <- data.normales$total_prcp
 mktest <- MannKendall(Z)$sl
@@ -124,6 +115,7 @@ if (mktest > 0.05) {
    Z_lm$coefficients <- c(mean(Z), 0)
    Z_sd <- sd(Z)
    Z_mu <- mean(Z)
+   Z_pred <- qnorm(ecdf(Z)(Z), Z_mu, Z_sd)
    
    car::qqPlot(Z, distribution="norm", mean=Z_mu, sd=Z_sd, lwd=0.3, id=F)
    abline(0,1, col='red', lwd=1)
@@ -134,12 +126,14 @@ if (mktest > 0.05) {
    abline(0,1, col='red', lwd=1)
 }
 
-ks.test(Z_pred, Z)
+ks.test(Z, Z_pred)
 ADGofTest::ad.test(Z, pnorm, mean=Z_mu, sd=Z_sd)
-
 
 # ================== Distribution des précipitations extrêmes ==================
 MannKendall(data.extremes$excedence)
+data.extremes %>% ggplot(aes(x=start_date, y=excedence)) + 
+   geom_path() +
+   geom_smooth()
 
 params_GPD <- fit_GPD(data.extremes$excedence, method = 'mm')
 
@@ -234,7 +228,7 @@ data.extremes %>% select(excedence, duration) %>% na.omit() %>%
    calculate_correlation(alternative = 'greater')
 
 # eval_dependence_trend(data.extremes, variable='duration',
-                      # stride=nrow(data.extremes)/2)
+# stride=nrow(data.extremes)/2)
 
 best_copula.D <- copula_selection(
    data.extremes, variable='duration', family_set = copulas_except_elliptic, 
@@ -298,15 +292,19 @@ TVaR <- function(p, year) {
    TVaR <- mean(sorted_obs[sorted_obs > VaR])
    return(TVaR)
 }
-global_quantiles <- function(p) {
+qglobal <- function(p) {
    vec_sim <- as.vector(simulations)
    n <- length(vec_sim)
    q <- sort(vec_sim)[ceiling(p*n)]
    return(q)
 }
-globap_cdf <- function(x) {
+pglobal <- function(x) {
    vec_sim <- as.vector(simulations)
    ecdf(vec_sim)(x)
+}
+dglobal <- function(x) {
+   vec_sim <- as.vector(simulations)
+   ecdf(vec_sim)(x + 0.5) - ecdf(vec_sim)(x - 0.5)
 }
 
 
@@ -317,11 +315,17 @@ annual_prcp <- data %>%
    unlist(use.names = F)
 
 n <- length(years)
-qqplot(annual_prcp, global_quantiles((1:n)/(n+1)),
+qqplot(annual_prcp, qglobal((1:n)/(n+1)),
        xlab='Empirical quantiles',
        ylab='Theorical quantiles')
-abline(0,1, col='blue')
+abline(0, 1, col='blue')
 
-ks.test(annual_prcp, globap_cdf)
-ad.test(annual_prcp, globap_cdf)
+car::qqPlot(annual_prcp, "global",
+            xlab='Empirical quantiles',
+            ylab='Theorical quantiles',
+            lwd=0.5, id=F)
+abline(0, 1, col='red')
+
+ks.test(annual_prcp, pglobal)
+ad.test(annual_prcp, pglobal)
 # ------------------------------------------------------------------------------
