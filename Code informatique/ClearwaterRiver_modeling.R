@@ -74,32 +74,11 @@ data.normales <- data %>%
    rename('year' = `year(start_date)`, total_prcp = `sum(prcp_agg)`)
 
 # ================== Distribution des précipitations saisonnières ==============
-Z <- data.normales$total_prcp
-mktest <- MannKendall(Z)$sl
+hist(data.normales$total_prcp, freq=FALSE)
+shapiro.test(data.normales$total_prcp)
 
-hist(Z, freq=FALSE)
-shapiro.test(Z)  # Le fait que les données soient non stationnaires peut expliquer la faible p-value.
+Z_fitted <- fit_Z(data.normales)
 
-Z_lm <- lm(total_prcp ~ year, data=data.normales)
-Z_sd <- summary(Z_lm)$sigma
-
-if (mktest > 0.05) {
-   Z_lm$coefficients <- c(mean(Z), 0)
-   Z_sd <- sd(Z)
-   Z_mu <- mean(Z)
-   Z_pred <- qnorm(ecdf(Z)(Z), Z_mu, Z_sd)
-   
-   car::qqPlot(Z, distribution="norm", mean=Z_mu, sd=Z_sd, lwd=0.3, id=F)
-   abline(0,1, col='red', lwd=1)
-} else {
-   Z_mu <- predict(Z_lm)
-   Z_pred <- qnorm(ecdf(Z)(Z), Z_mu, Z_sd)
-   car::qqPlot(Z_lm, lwd=0.3, id=F, ylab='studentized residuals')
-   abline(0,1, col='red', lwd=1)
-}
-
-ks.test(Z, Z_pred)
-ADGofTest::ad.test(Z, pnorm, mean=Z_mu, sd=Z_sd)
 
 # ================== Distribution des précipitations extrêmes ==================
 MannKendall(data.extremes$excedence)
@@ -129,10 +108,35 @@ data.extremes %>%
    geom_path() +
    geom_smooth()
 
-W_fitted <- fit_W(data.extremes, show_qqplot=T)
-dw <- W_fitted$density
-pw <- W_fitted$distribution
-qw <- W_fitted$quantiles
+W_fitted <- fit_W(data.extremes)
+
+
+# Vérifier l'adéquation
+qW <- W_fitted$quantiles
+W <- data.extremes$W
+t0 <- (data.extremes$start_date + data.extremes$duration) %>% as.numeric()
+W_simul <- sapply(t0, function(.t) {
+   qW(runif(1e+4), .t)
+}) %>% as.vector()
+W_simul <- W_simul[W_simul <= max(W)] %>% sort()
+n <- length(W_simul)
+
+pSimul <- ecdf(W_simul)
+qSimul <- function(p) W_simul[ceiling(p*n)]
+dSimul <- function(w) {
+   sapply(w, function(.w) {
+      if (.w==0) 0
+      else pSimul(.w) - pSimul(.w-1)
+   })
+}
+car::qqPlot(W, 'Simul',
+            xlab='Theorical quantiles',
+            ylab='Empirical quantiles',
+            lwd = 0.5, id = F)
+abline(0, 1, col='red')
+
+print(ks.test(W, pSimul))
+print(ad.test(W, pSimul))
 
 
 # ================== Distribution de la duration (extrêmes) ====================
@@ -141,10 +145,7 @@ data.extremes %>%
    geom_path() +
    geom_smooth()
 
-D_fitted <- fit_duration(data.extremes, show_qqplot=T)
-dD <- D_fitted$density
-pD <- D_fitted$distribution
-qD <- D_fitted$quantiles
+D_fitted <- fit_duration(data.extremes, show_qqplot = T)
 
 
 # ================== Analyse de la dépendance empirique ========================
@@ -169,58 +170,23 @@ data.extremes %>%
    cor(use = "pairwise.complete.obs", method='spearman')
 
 
-# ============== Modélisation de la dépendence entre X-u|X>u et W ==============
-# eval_dependence_trend(data.extremes, variable='W', stride=nrow(data.extremes)/2)
-extreme_value_copulas <- c(4, 5, 104)
-copulas_except_elliptic <- c(-1,-2)
+# ============== Modélisation de la dépendence =================================
+uu <- data.extremes %>% select(excedence, W, duration) %>%
+   mutate_all(pobs) %>% as.matrix()
 
-best_copula.W <- copula_selection(
-   data.extremes, variable='W', family_set = copulas_except_elliptic,
-   gofTest = 'white')
+Matrix = c(1, 0, 0,
+           2, 2, 0,
+           3, 3, 3) %>% matrix(ncol=3, byrow=T)
+RVineMatrixCheck(Matrix)
 
-# Copule empirique
-data.extremes %>% 
-   select(W, excedence) %>%
-   ggplot(aes(x = pobs(W),
-              y = pobs(excedence))) +
-   geom_density_2d_filled(show.legend=F) + 
-   xlab('Ranks of W') + 
-   ylab('Ranks of (X-u|X>u)')
+RVM <- RVineCopSelect(uu, familyset = NA, indeptest = T,
+                      Matrix = Matrix)
 
-# Copule théorique
-U_sim <- BiCopSim(1e+4, obj = best_copula.W)
-colnames(U_sim) <- c('u1', 'u2')
-U_sim %>% as_tibble() %>%
-   ggplot(aes(x = u1, y = u2)) +
-   geom_density_2d_filled(show.legend=F)
-
-
-# ============== Modélisation de la dépendence entre X-u|X>u et D ==============
-data.extremes %>% select(excedence, duration) %>% na.omit() %>% 
-   calculate_correlation(alternative = 'greater')
-
-# eval_dependence_trend(data.extremes, variable='duration',
-# stride=nrow(data.extremes)/2)
-
-best_copula.D <- copula_selection(
-   data.extremes, variable='duration', family_set = copulas_except_elliptic, 
-   gofTest = 'white')
-
-# Copule empirique
-data.extremes %>% 
-   select(duration, excedence) %>%
-   ggplot(aes(x = pobs(duration),
-              y = pobs(excedence))) +
-   geom_density_2d_filled(show.legend=F) + 
-   xlab('Ranks of D') + 
-   ylab('Ranks of (X-u|X>u)')
-
-# Copule théorique
-U_sim <- BiCopSim(1e+4, obj = best_copula.D)
-colnames(U_sim) <- c('u1', 'u2')
-U_sim %>% as_tibble() %>%
-   ggplot(aes(x = u1, y = u2)) +
-   geom_density_2d_filled(show.legend=F)
+RVinePar2Tau(RVM)
+data.extremes %>% select(excedence, W, duration) %>%
+   mutate(duration=as.numeric(duration)) %>%
+   cor(method='kendall') %>%
+   replace(list=c(1,4:9), 0)
 
 
 # ============== Modélisation de la dépendence entre X et Z ====================
@@ -236,17 +202,55 @@ data_XZ <- data.extremes %>%
 #                       stride=nrow(data.extremes)/2)
 
 best_copula.XZ <- copula_selection.XZ(
-   data_XZ, family_set = copulas_except_elliptic, gofTest = 'white')
+   data_XZ, family_set = c(-1,-2), gofTest = 'white')
 
 
 # ==== Simulation pour tenter de reproduire la distribution des pluies totales ====
 years <- data$start_date %>% year() %>% unique()
 
-simulations <- simulate_annual_prcp(years, W_fitted, D_fitted, params_GPD,
-                                    best_copula.W, best_copula.D, best_copula.XZ,
-                                    Z_lm, treshold=u, nsim=3e+2)
+simulations <- simulate_annual_prcp(years, Z_fitted, W_fitted, D_fitted, params_GPD,
+                                    RVM=RVM, best_copula.XZ=best_copula.XZ, 
+                                    treshold=u, nsim=1e+3)
+
+qglobal <- function(p) {
+   vec_sim <- as.vector(simulations)
+   n <- length(vec_sim)
+   q <- sort(vec_sim)[ceiling(p*n)]
+   return(q)
+}
+pglobal <- function(x) {
+   vec_sim <- as.vector(simulations)
+   ecdf(vec_sim)(x)
+}
+dglobal <- function(x) {
+   vec_sim <- as.vector(simulations)
+   ecdf(vec_sim)(x) - ecdf(vec_sim)(x - 1)
+}
 
 
+annual_prcp <- data %>% 
+   group_by(year(start_date)) %>%
+   summarise(prcp_agg = sum(prcp_agg), .groups='drop') %>%
+   select(prcp_agg) %>%
+   unlist(use.names = F)
+
+n <- length(years)
+qqplot(annual_prcp, qglobal((1:n)/(n+1)),
+       xlab='Empirical quantiles',
+       ylab='Theorical quantiles')
+abline(0, 1, col='red')
+
+car::qqPlot(annual_prcp, "global",
+            xlab='Theorical quantiles',
+            ylab='Empirical quantiles',
+            lwd=0.5, id=F)
+abline(0, 1, col='red')
+
+ks.test(annual_prcp, pglobal)
+ad.test(annual_prcp, pglobal)
+
+
+# Pour aller plus loin ====
 ps <- function(x, year) {
    ind <- which(years == year)
    ecdf(simulations[ind,])(x)
@@ -264,40 +268,4 @@ TVaR <- function(p, year) {
    TVaR <- mean(sorted_obs[sorted_obs > VaR])
    return(TVaR)
 }
-qglobal <- function(p) {
-   vec_sim <- as.vector(simulations)
-   n <- length(vec_sim)
-   q <- sort(vec_sim)[ceiling(p*n)]
-   return(q)
-}
-pglobal <- function(x) {
-   vec_sim <- as.vector(simulations)
-   ecdf(vec_sim)(x)
-}
-dglobal <- function(x) {
-   vec_sim <- as.vector(simulations)
-   ecdf(vec_sim)(x + 0.5) - ecdf(vec_sim)(x - 0.5)
-}
-
-
-annual_prcp <- data %>% 
-   group_by(year(start_date)) %>%
-   summarise(prcp_agg = sum(prcp_agg), .groups='drop') %>%
-   select(prcp_agg) %>%
-   unlist(use.names = F)
-
-n <- length(years)
-qqplot(annual_prcp, qglobal((1:n)/(n+1)),
-       xlab='Empirical quantiles',
-       ylab='Theorical quantiles')
-abline(0, 1, col='blue')
-
-car::qqPlot(annual_prcp, "global",
-            xlab='Empirical quantiles',
-            ylab='Theorical quantiles',
-            lwd=0.5, id=F)
-abline(0, 1, col='red')
-
-ks.test(annual_prcp, pglobal)
-ad.test(annual_prcp, pglobal)
 # ------------------------------------------------------------------------------
