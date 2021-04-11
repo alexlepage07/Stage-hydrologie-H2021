@@ -131,9 +131,9 @@
 	
 	\maketitle
 	\begin{abstract}
-		Dans cet ouvrage, nous partons de \cite{jalbert2019modelling} pour proposer une modèle alternatif de prédiction des pluies printanières totales dans un contexte de modélisation des inondations saisonnières. Notre approche bonifie les modèles DDF (\textit{Dept, Duration, Frequency}) communément utilisés en pratique en ajoutant les notions de processus d'arrivée non stationnaire tel que présenté dans \cite{nelson2011modelling}. De plus, nous faisons une analyse exhaustive de la dépendance entre les différentes variables en jeux à l'aide de la théorie des copules telle que décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
+		Dans cet ouvrage, nous partons de \cite{jalbert2019modelling} pour proposer une modèle alternatif de prédiction des pluies printanières totales dans un contexte de modélisation des inondations saisonnières. Notre approche bonifie les modèles DDF (\textit{Dept, Duration, Frequency}) communément utilisés en pratique en ajoutant les notions de processus de renouvellement alterné avec récompense tel que présenté dans \cite{salvadori2006statistical} et \cite{salvadori2007use}. Comme les changements climatiques sont d'actualité, on considère la possibilité que ce processus soit non-stationnaire. De plus, nous faisons une analyse exhaustive de la dépendance entre les différentes variables en jeux à l'aide de la théorie des copules telle que décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
 	\end{abstract} \vspace{10pt}
-	\keywords{Processus d'arrivée, processus non stationnaire, dépendance, copules, valeurs extrêmes, précipitations, distribution Pareto généralisée, excès de seuil.}
+	\keywords{Processus de renouvellement alterné avec récompense, processus non stationnaire, dépendance, copules, valeurs extrêmes, précipitations, distribution Pareto généralisée, excès de seuil.}
 	
 	
 	\section{Introduction}
@@ -149,173 +149,389 @@
 	En effet, afin de modéliser la quantité quotidienne de pluie tombée dans les cas extrêmes, \cite{jalbert2019modelling} utilise la loi Pareto généralisée, aussi connue sous l'appellation \textit{Peaks-Over-Threshold}(POT). Cependant, l'estimateur du paramètre de forme de la loi POT calculé sur les valeurs quotidiennes faisaient en sorte que la distribution avait un support fini et la probabilité qu'un événement de l'envergure de 2011 se produise était quasiment nulle. Conséquemment, \cite{jalbert2019modelling} proposa une extension du modèle POT où il divise la quantité de pluie tombée lors d'une journée de pluie extrême par la proportion que cette quantité représente sur l'ensemble des précipitations tombées au cours d'une période de pluie continue. Se faisant, il n'y a plus de problème de borne supérieure à la distribution de la sévérité.\\
 	
 	Le modèle que nous proposons est une alternative à celui de \cite{jalbert2019modelling}. Il reprend le concept de regroupement des jours en périodes de pluie continue, mais il adopte une approche légèrement plus intuitive en s'inspirant grandement de la méthodologie proposée dans \cite{zhang2019copulas} et \cite{shaw2010hydrology}. 
-%		
-%		D'ailleurs notre modèle s'inscrit dans la catégorie des modèles de type DDF (\textit{Dept, Duration, Frequency}). Celui-ci
-%		
+%			
 	Comme il est expliqué, entre autre, au chapitre 9.6 de \cite{shaw2010hydrology}, les modèles de précipitations utilisés dans la pratique, communément appelés modèles DDF (Dept, Duration, Frequency), sous-tendent les variables de sévérité de durée et de fréquence, lesquelles ont toutes leur importance. Or, \cite{jalbert2019modelling} se concentre principalement sur la sévérité. La fréquence est modélisée avec une loi de Poisson conditionnelle-gamma, mais l'aspect de la durée est négligé. Notre approche, quant à elle, s'intéresse à toutes ces variables aléatoires et aux relations qui les unissent conformément à \cite{zhang2019copulas}. Nous incorporons des notions des processus de renouvellement aux concepts communément utilisés en hydrologie afin d'améliorer la précision du modèle de fréquence et les liens de dépendance sont modélisés à l'aide de la théorie des copules. Également, une attention particulière est apportée à la non-stationnarité des distributions de probabilité afin de prendre en compte le contexte des changements climatiques.\\
 	
-	L'article est découpé comme suit: la section \ref{sect_model} présente le modèle proposé...
+	L'article est découpé comme suit: la section \ref{sect_model} présente le modèle proposé. Puis, deux études de cas sont décrites dans la section \ref{sect_etude_de_cas}. Une analyse de résultats est réalisée dans la section \ref{sect_resultats}. Un algorithme de simulation destiné à étudier le modèle proposé est présenté dans l'annexe \ref{annexe_algo_simul}. Finalement, des éléments de discussion sont abordés dans la section \ref{sect_discussion}.
 
 
 	\section{Le modèle proposé}\label{sect_model}
-	L'intuition derrière le modèle proposé est de considérer les périodes de précipitations continues comme des événements uniques en agrégeant la quantité de pluie tombée lors de celles-ci. Se faisant, non seulement on considère les jours où le volume d'eau tombé sort de l'ordinaire, mais on considère également les séquences où le nombre de jours de pluie continue est anormalement élevé.
+	L'intuition derrière le modèle proposé est de considérer les périodes de précipitations continues comme des événements uniques en agrégeant la quantité de pluie tombée lors de celles-ci. Se faisant, non seulement on considère les jours où le volume d'eau tombé sort de l'ordinaire, mais on considère également les séquences où le nombre de jours de pluie continue est anormalement élevé. Pour se faire, les processus de renouvellement alternés sont utilisés pour modéliser le nombre d'événements extrêmes. Également, on s'intéressera à la présence de dépendance unissant les v.a. en jeu.	
+	
+	\subsection{Description du modèle}\label{subsect_description_modele}
+	Pour une année $m, m\geq 0$, on définit la suite de v.a. $\underline{Y}^{(m)} = \left\lbrace Y_l^{(m)}, l\in \{1,\dots,91\}\right\rbrace$, où $Y_l^{(m)}$ représente la quantité, en mm de pluie, tombée lors des 91 jours du printemps, c.-à-d. du $1^{\mathrm{er}}$ avril au 30 juin. Selon \cite{riboust2016analysis} et \cite{jalbert2019modelling}, cette période de temps est la plus critique lors des crues printanières. 
+	
+	Soit $\underline{\mathcal{C}}^{(m)} = \left\lbrace \mathcal{C}_j^{(m)}, j\in \{1,\dots, n_\mathcal{C}^{(m)}\}\right\rbrace$, la suite des $n_\mathcal{C}^{(m)}$ clusters regroupant les jours de pluie continue pour l'année $m$. En concordance avec \cite{jalbert2019modelling}, on définit un cluster comme une séquence de jours de pluie suivie par au moins une journée d'ensoleillement (0 mm de pluie).
 	%
-	De plus, on considère que le nombre d'événements extrêmes se produisant dans une année donnée est modélisé par un processus de renouvellement. Également, on s'intéressera à la présence de dépendance unissant les v.a. en jeu.
+	On définit la suite de v.a. $\underline{K}^{(m)} = \left\lbrace K_j^{(m)}, j\in \{1,\dots, n_{\mathcal{C}}^{(m)}\}\right\rbrace$, où $K_j^{(m)}$ représente la quantité de pluie totale tombée lors de la période $\mathcal{C}_j^{(m)}$ telle que $K_j^{(m)} = \sum_{l\in \mathcal{C}_j^{(m)}} Y_l^{(m)},\ j=1,\dots,n_\mathcal{C}^{(m)},\ \forall m$.
 	
-	Comme les données étudiées dans la section \ref{sect_etude_de_cas} ne présente aucun signe d'auto-corrélation, on pose ici l'hypothèse d'indépendance séquentielle sur les distributions étudiées. En revanche, aucune hypothèse n'est faite sur la stationnarité des distributions puisque de fortes évidences pointe vers la non-stationnarité de celles-ci.
+	\begin{exemple}\label{ex_clustering}
+		Supposons que, pour une année $m$, on ait $Y_{1}^{(m)}=30,\ Y_{2}^{(m)}=0,\ Y_{3}^{(m)}=2,\ Y_{4}^{(m)}=1,\ Y_{5}^{(m)}=3,\ Y_{6}^{(m)}=0,\ Y_{7}^{(m)}=0,\ Y_{8}^{(m)}=18,\ Y_{9}^{(m)}=3,\ Y_{10}^{(m)}=0$. 
+		Alors $\mathcal{C}_1 = \{1\},\ \mathcal{C}_2=\{3,4,5\},\ \mathcal{C}_3=\{8,9\}$. 
+		De plus, $K_1^{(m)} = Y_1^{(m)} = 30,\ K_2^{(m)}=Y_3^{(m)} + Y_4^{(m)} + Y_5^{(m)} = 6,\ K_3^{(m)}=Y_8^{(m)} + Y_9^{(m)} = 21$.
+	\end{exemple}
 	
-	
-	\subsection{Description du modèle}
-	On définit la suite de v.a. $\underline{Y} = \{Y_l\}_{l=1}^{91}$ comme la quantité en mm de pluie tombée lors des 91 jours du printemps, c.-à-d. du $1^{\mathrm{er}}$ avril au 30 juin, pour une année donnée. Selon \cite{riboust2016analysis} et \cite{jalbert2019modelling}, cette période de temps est la plus critique lors des crues printanières. 
-	
-	Soit $\underline{\mathcal{C}} = \{\mathcal{C}_j, j\in\natural^{+}\}$, les périodes de pluies continues de cette même année. En concordance avec \cite{jalbert2019modelling}, on définit une période de précipitations continues comme une séquence de jours de pluie séparées par au moins une journée d'ensoleillement (0 mm de pluie).
+	Pour une année $m$ et pour un seuil critique $u$, on sépare les événements en deux sous-ensembles
+	$\mathcal{Z}^{(m)} = \lbrace j: K_j^{(m)} < u \rbrace$ et 
+	$\mathcal{X}^{(m)} = \lbrace j: K_j^{(m)} \geq u \rbrace.$
 	%
-	On définit $\underline{K} = \{K_j, j\in\natural^+\}$ comme la suite de v.a. de la quantité de pluie totale tombée lors de la période $\mathcal{C}_j$ telle que $K_j = \sum_{l\in \mathcal{C}_j} Y_l$.
+	On définira alors
+	$\underline{X}^{(m)} =\left\lbrace X_i^{(m)}, i\in  \{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}\right\rbrace = \{K_j^{(m)}: j \in \mathcal{X}^{(m)}\}$ comme étant une suite de v.a. où $X_i^{(m)}$ représente la quantité de pluie tombée lors du $i$-ème cluster extrême de l'année $m$.
 	
-	Pour un seuil critique $u$, on sépare les événements en deux sous-ensembles
-	$\mathcal{Z} = \lbrace j: K_j \leq u \rbrace$ et 
-	$\mathcal{X} = \lbrace j: K_j > u \rbrace.$
-	%
-	En ce qui a trait aux événement extrêmes, afin de faciliter les prochaines étapes, posons
-	$\underline{X} =\{X_i, i\in\natural^+\} = \{K_j: j \in \mathcal{X}\}.$
+	\paragraph{Exemple \ref{ex_clustering}, suite.} 
+	\textit{On fixe un seuil $u=18$. L'ensemble $\mathcal{X}^{(m)}$ correspond à $j\in\{1,3\}$. On a donc $X_1^{(m)}=K_1^{(m)}=30$, et $X_2^{(m)} = K_3^{(m)} = 21$. Puis, pour ce qui est des événements non-extrêmes, l'ensemble $\mathcal{Z}^{(m)}$ correspond au complément de l'ensemble $\mathcal{X}^{(m)}$. On a alors $\mathcal{Z}^{(m)} = \{2\}.$
+	}\\
 	
-	Soient $\underline{T} = \{T_i, i\in\natural\}$ la suite de v.a. représentant le temps d'arrivé des événements $\{\mathcal{C}_j, j\in\mathcal{X}\}$ et $\underline{D}= \{D_i, i\in\natural\}$, la suite de v.a. représentant leur durée.
-	On pose également la suite de v.a. $\underline{W} = \{W_i, i\in\natural\}$, représentant les temps séparant les événements extrêmes telles que $W_i := T_i - T_{i-1} - D_{i-1} = T_{i} - T_{i-1}^*,$ où
-	$T_i^* := T_0 + \sum_{k=0}^{i} W_k + D_k$
-	et $T_0$ correspond au $1^{\mathrm{er}}$ avril de l'année à l'étude, traduite en format numérique selon une date de référence choisie arbitrairement. Par convention, on a $W_0 = D_0 = 0$.
+	Soit $\underline{T}^{(m)} = \left\lbrace T_i^{(m)}, i\in\{0,1,\dots, \mathrm{card}(\mathcal{X}^{(m)})\}\right\rbrace$ une suite de v.a. où $T_i^{(m)}$ représente la première journée du cluster $\{\mathcal{C}_j^{(m)}, j\in\mathcal{X}^{(m)}\}$ associé à $X_i^{(m)}$. On défini que $T_0^{(m)}$ correspond au $1^{\mathrm{er}}$ avril de l'année $m$. Afin de calculer $T_i^{(m)}\ \forall\ i,m$, on définit une date d'origine qui correspond au jour zéro (p.ex. $T_0=1^{\mathrm{er}}$ avril 1900), puis, on converti cette date en format numérique selon le nombre de jours écoulé depuis cette date de référence. Cette opération se réalise automatiquement en enchaînant les fonctions \texttt{as.Date} avec \texttt{as.numeric} dans le langage de programmation \texttt{R}.
 	
-	Soit $N$, le processus de renouvellement représentant le nombre de périodes de pluies continues où la quantité cumulée d'eau par événement dépasse un seuil critique $u$. Par définition des processus de renouvellement, pour un accroissement correspondant à une saison printanière ($[T_0, T_0+91]$), on a 
+	Soit $\underline{D}^{(m)}= \left\lbrace D_i^{(m)}, i\in  \{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}\right\rbrace$, une suite de v.a. où $D_i^{(m)}$ représente la durée, en nombre de jours, du $i$-ème événement extrême de l'année $m$. Concrètement, cela signifie que $\{D_i^{(m)}, i\in\{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\} = \{\mathrm{card}(C_j^{(m)}): j\in\mathcal{X}^{(m)}\}$.
+	
+	Soit $\underline{W}^{(m)} = \left\lbrace W_i^{(m)}, i\in  \{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}\right\rbrace$, une suite de v.a. où $W_i^{(m)}$ représente le temps écoulé depuis la fin du dernier événement extrême telle que 
+	$$W_i^{(m)} := T_i^{(m)} - T_{i-1}^{(m)} - D_{i-1}^{(m)} = T_{i}^{(m)} - T_{i-1}^{\star(m)},$$ 
+	où $T_i^{\star(m)} := T_0^{(m)} + \sum_{k=0}^{i} W_k^{(m)} + D_k^{(m)}$. Par convention, on a $W_0^{(m)} = D_0^{(m)} = 0,\ \forall m$.
+	
+	\paragraph{Exemple \ref{ex_clustering}, suite.} 
+	\textit{Si on attribut la valeur numérique 0 au $1^{\mathrm{er}}$ avril de l'année $m$, alors on a $T_0^{(m)} = 0,\ T_1^{(m)} = T_0^{(m)} = 0,\ T_2^{(m)}=7$. On a également $D_1^{(m)} = \mathrm{card}(C_1^{(m)}) = 1,\ D_2^{(m)} = \mathrm{card}(C_3^{(m)}) = 2$ et $W_1^{(m)}=T_1^{(0)}=0, W_2^{(m)} = T_{2}^{(m)} - T_{1}^{(m)} - D_{1}^{(m)} = 7 - 0 - 1 = 6$.
+	}\\
+	
+	Soit $\boldsymbol{N}^{(m)}=\{N^{(m)}_s(t),\ s,t\geq 0\} = \{N^{(m)}(s,\ s+t),\ s,t\geq 0\}$, un processus de renouvellement non-stationnaire alterné où un accroissement $N^{(m)}_s(t)$ permet de modéliser le nombre d'événements extrêmes ($\mathrm{card}(\mathcal{X})$) survenus lors de l'intervalle de temps $[s,s+t]$. Dans le contexte des changement climatiques, aucune hypothèse n'est faite sur la stationnarité du processus. Par définition, on a
 	\begin{equation}\label{processus_renouvellement}
-		N := \sum_{i=1}^{\infty} \mathds{1} \{T_i^* \leq T_0 + 91\} = \sum_{i=1}^{\infty} \mathds{1} \{T_i + D_i \leq T_0 + 91\}.
+		N^{(m)}_{T_0}(t) := \sum_{i=1}^{\infty} \mathds{1} \{T_i^{\star (m)} \leq T_0^{(m)} + t\} = \sum_{i=1}^{\infty} \mathds{1} \{T_i^{(m)} + D_i^{(m)} \leq T_0^{(m)} + t\} = \inf\{i: T_i^{(m)} + D_i^{(m)} \leq T_0^{(m)} + t\}.
 	\end{equation}
 	
-	Afin d'étudier la quantité de pluie totale tombée lors d'une saison, on définit la v.a. des précipitations non-extrêmes totales comme $Z := \sum_{j \in \mathcal{Z}} K_j$, de même que la v.a. des précipitations extrêmes totales
+	Soit $\boldsymbol{V}^{(m)}=\{V^{(m)}_s(t),\ s,t\geq 0\} = \{V^{(m)}(s,\ s+t),\ s,t\geq 0\}$, un processus de renouvellement non-stationnaire alterné avec récompenses où un accroissement $V^{(m)}_s(t)$ permet de modéliser la quantité totale d'eau accumulée lors des événements extrêmes sur un intervalle de temps $[s,s+t]$. Ainsi, on a 
 	\begin{equation}
-		V := \sum_{i=1}^{\infty} X_i\, \mathds{1}\{T_i + D_i \leq T_0 + 91\}.
+		V^{(m)}_{T_0}(t) := \sum_{i=1}^{N^{(m)}_{T_0}(t)} X_i^{(m)} = \sum_{i=1}^{\infty} X_i^{(m)}\, \mathds{1}\{T_i^{(m)} + D_i^{(m)} \leq T_0^{(m)} + t\}.
 	\end{equation}
-	On peut donc modéliser la quantité de pluie totale tombée pendant une saison printanière avec $S = Z + V$. La dépendance unissant les variables en jeu est modélisée avec la théorie des copules décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
+
+	Les processus de renouvellement alternés de même que leur homologue avec récompenses sont utilisés dans la littérature en hydrologie, notamment dans \cite{salvadori2006statistical}, \cite{salvadori2007use} et dans \cite{small1986relationship}.\\
+
+	Soit $Z^{(m)}$, la v.a. de la quantité de pluie non-extrême totale tombée lors de la saison printanière de l'année $m$. On a $Z^{(m)} := \sum_{j \in \mathcal{Z}^{(m)}} K_j^{(m)}$. La suite de v.a. $\underline{Z} =\{Z^{m}, m\in\natural\}$ n'est pas présumée stationnaire étant donné le contexte des changements climatiques.
+	%
+	La quantité de pluie totale tombée au cours du printemps d'une année $m$ est donc modélisée avec $S^{(m)}_{T_0}(91) = Z^{(m)} + V_{T_0}^{(m)}(91)$.
+	
+	\paragraph{Exemple \ref{ex_clustering}, suite.} 
+	\textit{Pour revenir à l'exemple \ref{ex_clustering}, on a $N_{0}^{(m)}(10) = \mathrm{card}(\mathcal{X}) = 2$ et $V_{0}^{(m)}(10) = X_1^{(m)} + X_2^{(m)} = 30+21 = 51$. Puis, $Z^{m} = K_2^{(m)} = 6$. Finalement $S_0^{(m)}(10) = 51 + 6 = 57.$
+	}\\
+	
+	Pour un exemple plus complet utilisant des données réelles provenant de la rivière Clearwater en Alberta et contenant plus d'une année, voir l'annexe \ref{ex_construction_model}.
 	
 	
-	\subsection{Choix des distributions marginales}
-	Avec la théorie des valeurs extrêmes, comme on cherche à modéliser l'ensemble des précipitations qui sortent des normales saisonnières, la méthode POT est tout indiquée. Alors on pose $(X_i-u|X_i>u)\sim \mathrm{GPD}(\xi, \sigma)$ telle que la fonction de répartition s'exprime comme
-	\begin{equation}
+	\subsection{Hypothèses du modèle}
+	En ce qui concerne l'hypothèse d'indépendance séquentielle, nous considérons qu'il est raisonnable de présumer que $Y_1^{(m)}$ est indépendante de $Y_{91}^{(m-1)}$. De ce fait, il faudrait réaliser le test d'indépendance proposé par \cite{genest2004test} sur chacune des années de façon indépendante. Cependant, comme la méthode proposée réduit grandement le nombre d'observations disponibles pour chacune des années, on se retrouverait avec au plus une vingtaine d'observations par année pour les variables résultantes de l'agrégation. Conséquemment, les résultats du test risquent d'être instables et peu concluants. Pour cette raison et par souci de simplicité, nous supposons l'hypothèse d'indépendance séquentielle pour chacune des v.a. du modèle.\\
+	
+	Pour ce qui est de l'hypothèse de stationnarité, considérant le contexte des changements climatiques, aucune présomption n'est faite à ce sujet. Un test de Mann-Kendall est effectué sur chacune des v.a. afin de vérifier l'hypothèse.
+	
+	
+	\subsection{Distributions marginales}\label{sect_distribution_marginales}
+	Avec la théorie des valeurs extrêmes, comme on cherche à modéliser l'ensemble des précipitations qui sortent des normales saisonnières, la méthode POT est tout indiquée pour modéliser les excédents de seuil (voir p.ex. \cite{hosking1987parameter}, \cite{klugman2013loss}). Alors on pose $(X_i-u|X_i\geq u)\sim \mathrm{GPD}(\xi, \sigma)$ telle que la fonction de répartition s'exprime comme
+	\begin{equation}\label{cdf_GPD}
 		F_u(x) := \begin{cases}
 			1-(1+\xi x/\sigma)^{-1/\xi}, & \xi \neq 0,\\
 			1-\exp(-x/\sigma), & \xi = 0,
 		\end{cases}
 	\end{equation}
 	où $x\geq0$, $\sigma>0$, $\xi \in\reel$ et $1+\xi x/\sigma > 0$, pour un seuil $u>0$.
-	À noter que la paramétrisation de la loi est grandement influencée par la valeur attribuée au paramètre $u$, lequel peut être obtenu par optimisation tel que présenté dans \cite{bader2016automated} et \cite{bader2018automated} ou encore avec \cite{northrop2015cross}. Bien que certains auteurs ({\red Citer certains auteurs}) utilisent un seuil non stationnaire, nous avons décidé d'utiliser un seuil fixe. Les raisons étant que ce n'est pas parce qu'il existe une tendance dans la quantité d'eau qui tombe dans une année qu'un événement est nécessairement plus extrême qu'avant (boîteux...), ainsi que par souci de simplicité ({\red Appuyer avec la littérature}){\red ...à revoir...}\\
+	À noter que la paramétrisation de la loi est grandement influencée par la valeur attribuée au paramètre $u$, lequel peut être obtenu par optimisation tel que présenté dans \cite{bader2016automated} et \cite{bader2018automated} ou encore avec \cite{northrop2015cross}. 
+	%
+	Pour faire suite à \cite{jalbert2019modelling} et pour des fins de simplicité considérant le temps imparti pour ce stage, le seuil utilisé est fixe. Cependant, il est d'intérêt de mentionner que plusieurs auteurs tels que \cite{kysely2010estimating}, \cite{begueria2011assessing} et \cite{cheng2014non} préconisent pour un seuil non-stationnaire. Cette approche sera considérée dans une prochaine version de ce travail.\\
 	
-	En ce qui a trait à la modélisation de la durée des périodes de pluie, l'approche proposée s'appuie sur... {\red Trouver des références...}
+	En ce qui concerne à la modélisation de la durée des périodes de pluie et les temps inter-occurrences, considérant que l'échelle de temps utilisée est en jours, les lois envisagées sont discrètes. De plus, considérant que le domaine des v.a. en jeux n'est pas fermé, la loi binomiale est écartée. 
+	Conséquemment, les lois retenues sont la loi binomiale négative, son homologue à un paramètre, la loi géométrique et la loi de Poisson. 
+	Également, étant donnée sa grande flexibilité, la loi Weibull discrétisée est également retenue.\\
 	
-	Puis, pour la v.a. des temps inter-occurrences, les distributions considérées sont  l'exponentielle, la Weibull et la gamma puisque... {\red Trouver des références...}\\
-	
-	
-	
-	
-	
-	\section{La méthodologie}
-	\paragraph{Sujets:}
-	\begin{enumerate}
-		\item Clustering
-		\item Vérification de l'indépendance séquentielle
-		\item Sélection de seuil automatique
-		\item Vérification de la stationnarité
-		\item Distribution de l'excédent de seuil
-		\item Distribution des normales de saison
-		\item Distribution des temps inter-occurrences
-		\item Sélection de la copule
-		\item Études de cas
-	\end{enumerate}
+	Du point de vue des précipitations non-extrêmes, \cite{jalbert2019modelling} recommande l'utilisation la la loi normale. Cependant, comme cette dernière admet des valeurs négatives, on considérera aussi la loi gamma comme alternative.
 	
 	
-	Relativement au traitement des distributions non stationnaires, les approches proposées dans {(\red À lire: \cite{nelson2011modelling})}, \cite{khaliq2006frequency} et dans \cite{chebana2021multivariate} sont considérées. 
+	\subsection{Modélisation de la dépendance}
+	La dépendance unissant les v.a. en jeu est modélisée avec la théorie des copules décrite dans \cite{joe1997multivariate} et \cite{nelsen2006introduction}.
+	%
+	Dans le contexte particulier des précipitations, on s'intéressera particulièrement à \cite{zhang2019copulas} qui utilise les copules archimédiennes et elliptiques pour modéliser la dépendance entre la durée et l'intensité des précipitations. On s'intéresse également à \cite{salvadori2006statistical} qui défini un processus de renouvellement alterné avec structure de dépendance unissant les variables de durée des épisodes secs, de durée des périodes humides et d'une variable d'intensité pour modéliser les orages. Cette dépendance est modélisée à l'aide d'une copule en vigne tri-variée. 
 	
-	Du point de vue des distributions marginales, certaines v.a. présentent de fortes évidences de non-stationnarité. Afin d'en tenir compte dans la paramétrisation des lois de probabilité, on détermine que la moyenne est une fonction linéaire du temps d'arrivée $\{T_i\}_{i\geq 0}.$ Puis le paramètre d'échelle de la loi devient une fonction de cette moyenne. Pour ce qui est du paramètre de forme de ces lois, celui-ci est présumé comme étant stationnaire.\\
+	Dans le contexte des valeurs extrêmes, on s'intéresse à \cite{gudendorf2010extreme} qui recommande, entre-autre, les copules de Gumbel, de Tawn et de Galambos lorsque les marginales impliquées sont de lois extrêmes.
 	
-	Du point de vue de la stationnarité de la distribution des copules, l'approche proposée par \cite{chebana2021multivariate} a été considérée. Cependant, étant donnée la faible quantité d'observations extrêmes dans le jeu de données, la méthode est très instable. Conséquemment, par souci de simplicité, la corrélation entre les variables aléatoires est présumée stable dans le temps.\\
+	Les copules elliptiques sont appréciées dans la littérature en hydrologie étant donnée leur flexibilité et la facilité avec laquelle on peut les paramétrer. Cependant, dans le contexte de la modélisation de valeurs extrêmes, nous les écartons, conformément aux conclusions de \cite{renard2007use}, puisque cette famille de copule tend à sous-estimer la dépendance lorsque les marginales sont constituées à la fois de v.a. extrêmes et de v.a. non-extrêmes.	
 	
-	Afin de vérifier l'hypothèse d'indépendance séquentielle, l'approche proposée par \cite{genest2004test} est utilisée. Cependant, il est important de mentionner que cette approche suppose que la séquence d'observations sur laquelle le test est effectué est continue. Or, dans le cas présent, on ne considère que les saisons printanières de chacune des années. Conséquemment, on se retrouve avec des intervalles de temps disjoints. De plus, comme le nombre d'observations par saison est généralement faible, le test statistique peut être non fiable. Donc, pour tester l'hypothèse d'indépendance séquentielle, l'approche employée fût d'effectuer le test de \cite{genest2004test} pour chacune des années indépendamment, puis d'observer les quantiles empiriques obtenus sur les \textit{p-values}. À noter que la méthode utilisée n'est pas appuyé par la littérature, mais que la création d'un test formel pour ce genre de situation pourrait devenir un sujet de recherche intéressant que nous laissons à d'autres.\\
-	
-	Pour ce qui est de la modélisation de la dépendance, celle-ci est effectuée selon la théorie des copules décrite dans \cite{joe1997multivariate} et dans \cite{nelsen2006introduction}.
-	Dans le contexte particulier des précipitations, on s'intéressera particulièrement à \cite{zhang2019copulas} {\red élaborer davantage...est-ce que je considère les copules en vigne ou je continue avec des copules bivariées ? Lire aussi \cite{salvadori2007use}}. Également, dans le contexte des valeurs extrêmes, on considère \cite{gudendorf2010extreme} qui recommande, entre-autre, les copules de Gumbel, de Tawn et de Galambos. En théorie, les copules elliptiques sont appréciées dans la littérature en hydrologie étant donnée leur flexibilité et la facilité avec laquelle on peut les paramétrer. Cependant, dans le contexte de la modélisation de valeurs extrêmes, nous les écartons, conformément aux conclusions de \cite{renard2007use}, puisque cette famille de copule tend à sous-estimer la dépendance lorsque les marginales sont constituées à la fois de v.a. extrêmes et de v.a. non-extrêmes.	
+%	\section{La méthodologie}\label{sect_methodologie}
+%	Il faut définir si les observations de $\underline{K}^{(m)}$ sont indépendantes séquentiellement, car cela pourrait affecter l'approche utilisée pour les étapes subséquentes.
+%	Pour se faire, l'approche proposée par \cite{genest2004test} est utilisée. Cependant, il est important de mentionner que cette approche suppose que la séquence d'observations sur laquelle le test est effectué est continue. Or, dans le cas présent, on ne considère que les saisons printanières de chacune des années. Conséquemment, on se retrouve avec des intervalles de temps disjoints. De plus, comme le nombre d'observations par saison est généralement faible, le test statistique peut être non fiable. Donc, pour tester l'hypothèse d'indépendance séquentielle, l'approche employée fût d'effectuer le test de \cite{genest2004test} pour chacune des années indépendamment, puis d'observer les quantiles empiriques obtenus sur les \textit{p-values}. À noter que la méthode utilisée n'est pas appuyé par la littérature, mais que la création d'un test formel pour ce genre de situation pourrait devenir un sujet de recherche intéressant que nous laissons à d'autres.
+%	
+%	Les résultats ainsi obtenus dans les études de cas réalisés démontrent qu'il n'y a pas assez d'évidence pour affirmer qu'il n'y a pas d'indépendance séquentielle. Pour cette raison, les prochaines étapes du projet s'appuient sur cette hypothèse.\\
+%	
+%	Il est désormais possible de déterminer un seuil $u$ afin de générer les ensembles $\mathcal{X}$ et $\mathcal{Z}$.
+%	Pour obtenir ce seuil, \cite{bader2016automated} et \cite{bader2018automated} propose une approche de sélection de seuil automatique qui s'appuie sur l'adéquation de la loi GP avec les excédents de seuil en s'appuyant sur la statistique d'Anderson-Darling. La méthode est implémentée dans le langage de programmation \texttt{R} avec la fonction \texttt{gpdSeqTests} de la librairie \texttt{eva}. Cette approche a été comparée avec celle de \cite{northrop2015cross} implémentée dans la fonction \texttt{ithresh} de la librairie \texttt{threshr}, mais cette dernière offrait une moins bonne adéquation en termes des statistiques d'Anderson-Darling et de Kolmogorov-Smirnov.\\
+%	
+%	Une fois le seuil obtenu, on calcule $Z=\sum_{j \in \mathcal{Z}} K_j$ pour chacune des années, de même que $X_i=\sum_{j \in \mathcal{X}} K_j,\ i\in\natural^+$. Puis, pour chacun des groupes de précipitation $\{\mathcal{C}_j, j\in\mathcal{X}\}$, on attribue les temps d'occurrence des événements extrêmes précédemment conservés à la suite de v.a. $\underline{T},$ de même que la durée de ces événements est attribuée à la suite de v.a. $\underline{D}$.\\
+%	
+%	Du point de vue des distributions marginales, certaines v.a. présentent de fortes évidences de non-stationnarité. Afin d'en tenir compte, on s'inspire de \cite{khaliq2006frequency} pour réaliser la paramétrisation des lois de probabilité. Ainsi, on détermine que la moyenne est une fonction linéaire du temps d'arrivée $\{T_i\}_{i\geq 0},$ soit $\mu(t) = a+bt,\ t>0$. Puis le paramètre d'échelle de la loi devient une fonction de cette moyenne selon la méthode des moments. Pour ce qui est du paramètre de forme de ces lois, celui-ci est présumé comme étant stationnaire.
+%	
+%	Du point de vue de la stationnarité des distributions multivariées, l'approche proposée par \cite{chebana2021multivariate} a été considérée. Cependant, étant donnée la faible quantité d'observations extrêmes dans le jeu de données, la méthode est très instable. Conséquemment, par souci de simplicité, la corrélation entre les variables aléatoires est présumée stationnaire.\\
+%	
+%	
+%	
 	
 	
 	\section{Études de cas}\label{sect_etude_de_cas}
+	Afin d'appliquer le modèle proposé dans la section \ref{sect_model}, deux bases de données sont étudiées. La première fait suite à l'étude réalisée par \cite{jalbert2019modelling} et concerne la ville de Burlington dans le Vermont. La seconde touche la rivière Clearwater en Alberta. Dans les deux cas, l'hypothèse de non-stationnarité est vérifiée pour chacune des v.a. en jeux. Différentes distributions sont testées afin de les modéliser et le critère de l'AIC est utilisé pour sélectionner les loi marginales offrant la meilleure adéquation. Cette approche s'appuie sur \cite{chebana2021multivariate} et sur \cite{khaliq2006frequency}. Par la suite, les copules en vignes sont utilisées afin de modéliser la structure de dépendance unissant les différentes composantes du modèle proposé. La sélection de la copule la plus adéquate s'appuie sur \cite{dissmann2013selecting} et les fonction \texttt{R} de la librairie \texttt{VineCopula}.\\
 	
-	Copule BB1: Voir \cite{joe1997multivariate}
-		
-		\subsection{Lac Champlain}
-		La station \texttt{USW00014742} située à Burlington, au Vermont comporte quelques données manquantes. Afin d'interpoler sur celles-ci, l'approche recommandée par \cite{shaw2010hydrology} est de moyenner les observations obtenues sur les stations avoisinantes. De plus, comme cette station a fermé le 3 juin 1943, nous avons compensé, comme indiqué par \cite{jalbert2019modelling}, avec la station de l'aéroport de Burlington, soit la station \texttt{USW00014742}, laquelle a commencé ses opérations le $1^{\mathrm{er}}$ décembre 1940.\\
-		
-		Pour le test d'indépendance séquentielle, les données du Lac Champlain, les résultats statistiques descriptives liées aux \textit{p-values} obtenues avec le test de \cite{genest2004test} sur chacune des années sont résumées dans le tableau \ref{tbl_Lac_Champlain_Serial_dependence}.
-		
-		\begin{table}[ht]
-			\centering
-			\begin{tabular}{lrrrrrr}
-				\toprule
-				\multicolumn{7}{l}{Nombre d'événements extrêmes par année}\\
-				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
-				\hline
-				& 9.00 &  17.00 &  18.00  & 18.23 &  20.00  & 24.00\\
-				\midrule[1pt]
-				\multicolumn{7}{l}{\textit{P-values} pour le test d'indépendance séquentielle}\\
-				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
-				\hline
-				$\underline{K}$ & 0.006 & 0.208 & 0.466 & 0.480 & 0.745 & 0.994 \\ 
-				\bottomrule
-			\end{tabular}
-		\caption{Statistiques descriptives des \textit{p-values} obtenues sur chacune des années lors du test d'indépendance séquentielle proposé par \cite{genest2004test} pour le Lac Champlain.}
-		\label{tbl_Lac_Champlain_Serial_dependence}
-		\end{table}
+	Pour les prochaines sections, afin de simplifier la notation, on pose simplement 
+	$$K=\{K^{(m)}_j,\ j\in\{1,\dots,n_{\mathcal{C}}^{(m)}\}, \forall m\}, 
+	\quad 
+	X=\{X^{(m)}_i,\ i\in\{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}, \forall m\},$$
+	$$W=\{W^{(m)}_i,\ i\in\{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}, \forall m\}, 
+	\quad 
+	D=\{D^{(m)}_i,\ i\in\{1,\dots,\mathrm{card}(\mathcal{X}^{(m)})\}, \forall m\}$$
+	$$\text{et }Z=\{Z^{(m)},\ \forall m\}.$$
 	
-		Afin de vérifier la stationnarité des distributions, le test de Mann-Kendall révèle une statistique de test égale à 0.0401 et une $p-value$ pour l'hypothèse alternative bi-latérale de 0.0028164. Conséquemment, on rejette l'hypothèse nulle du test et on conclu qu'il existe une tendance ascendante dans la distribution de la suite de v.a. $\underline{K}$.\\
 		
-		Pour ce qui est de la détermination du seuil $u$ servant à séparer les événements extrêmes des saisonniers, on applique l'approche proposée par \cite{bader2018automated} pour trouver un seuil optimal de 26.67mm de pluie. Cette quantité correspond au $86.39^{\mathrm{e}}$ percentile des observations empiriques de $\underline{K}$ et permet de conserver 340 observations en excédent de seuil.
-		%		
-		Conformément à \cite{choulakian2001goodness}, les tests d'Anderson-Darling et de Crame-von Mises pour vérifier l'adéquation des excès de seuil avec la famille de loi GPD offrent des \textit{p-value} de 0.132 et 0.130. Conséquemment, on ne peut rejeter l'hypothèse nulle que les excès de seuil sont issues de la loi de Pareto généralisée au seuil de 5\%.
+	\subsection{Lac Champlain}\label{sect_LacChamplain}
+	La première étude de cas fait suite à celle réalisée par \cite{jalbert2019modelling} et concerne la ville de Burlington dans l'état du Vermont aux États-Unis. Les données utilisées proviennent du site de la National Oceanic and Atmospheric Administration (NOAA)\footnote{\url{https://www.ncdc.noaa.gov/cdo-web/search?datasetid=GHCND}}.
+	%
+	La station \texttt{USC00431072} a débuté ses opérations en 1884. Cependant, elle comporte quelques données manquantes. Afin d'interpoler sur celles-ci, l'approche recommandée par \cite{shaw2010hydrology} est de moyenner les observations obtenues sur les stations avoisinantes. De plus, comme cette station a fermé le 3 juin 1943, nous avons compensé, comme indiqué par \cite{jalbert2019modelling}, avec la station de l'aéroport de Burlington, soit la station \texttt{USW00014742}, laquelle a commencé ses opérations le $1^{\mathrm{er}}$ décembre 1940. Les données obtenues comporte de l'information jusqu'en 2020, soit 137 ans ($12\,467$ observations printanières).\\
 		
-		Pour modéliser $Z$, comme la p-value du test de Mann-Kendall est de 0.512, on ne peut rejeter l'hypothèse nulle qu'il n'y a pas de tendance. Conséquemment, une simple loi Normale est entraînée pour modéliser les précipitations saisonnières non-extrêmes. L'illustration \ref{qqplot_Z} atteste de l'adéquation de la loi avec les données.
-		 Ainsi, on y voit que la loi normale stationnaire est adéquate, mais que cette adéquation n'est pas parfaite. D'ailleurs, le test de Shapiro-Wilk donne une p-value de 0.030, laissant présager que les données ne sont pas réellement normales... {\red à retravailler... trouver une loi alternative à la loi normale...}
-		\begin{figure}[ht]
-			\centering
-			\includegraphics[width=0.5\textwidth]{graphiques/qqplot_Z}
-			\caption[QQ-plot de Z]{Diagramme quantile-quantile de Z: La ligne bleue présente la tendance des points de rencontre entre les quantiles. Les pointillés présentent l'intervalle de confiance au seuil de 5\% pour la droite de tendance et la ligne rouge est la diagonale d'adéquation parfaite. L'objectif est que la diagonale rouge se situe dans l'intervalle de confiance.}
-			\label{qqplot_Z}
-		\end{figure}
-		Faute d'avoir des test d'adéquation tenant compte de la non-stationnarité, on utilise les statistiques d'Anderson-Darling et de Kolmogorov-Smirnov pour vérifier l'adéquation de manière quantitative. Les seuils observés de ces tests sont de 
+%		Dans un premier temps, on vérifie s'il y a de l'évidence contre l'hypothèse d'indépendance séquentielle avec la méthodologie décrite à la section \ref{sect_methodologie}. Le tableau \ref{tbl_Lac_Champlain_Serial_dependence} résume les résultats du test. On y voit, d'une part, que le nombre d'événement par année est très limité, oscillant entre 9 et 24 observations, avec une moyenne et une médiane de 18. Cela engendre beaucoup d'instabilité dans le test statistique proposé par \cite{genest2004test}. D'autre part, malgré cette instabilité, la méthode utilisée permet tout de même de voir qu'au moins 75\% des années testées n'ont démontré aucun signe de dépendance au seuil de 5\%. De plus, le quantile à 5\% des \textit{p-values} observés est de 0.06153846. Avec ces résultats, on peut conclure qu'il n'y a pas d'évidence suffisamment forte pour affirmer qu'il y a bien présence de dépendance séquentielle dans la suite de v.a. \underline{K}.
+%		\begin{table}[ht]
+%			\centering
+%			\begin{tabular}{lrrrrrr}
+%				\toprule
+%				\multicolumn{7}{l}{Nombre d'événements extrêmes par année}\\
+%				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
+%				\hline
+%				& 9.00 &  17.00 &  18.00  & 18.23 &  20.00  & 24.00\\
+%				\midrule[1pt]
+%				\multicolumn{7}{l}{\textit{P-values} pour le test d'indépendance séquentielle}\\
+%				& Min. & 1st Qu. & Median & Mean & 3rd Qu. & Max. \\ 
+%				\hline
+%				$\underline{K}$ & 0.006 & 0.208 & 0.466 & 0.480 & 0.745 & 0.994 \\ 
+%				\bottomrule
+%			\end{tabular}
+%		\caption{Statistiques descriptives des \textit{p-values} obtenues sur chacune des années lors du test d'indépendance séquentielle proposé par \cite{genest2004test} pour le Lac Champlain.}
+%		\label{tbl_Lac_Champlain_Serial_dependence}
+%		\end{table}
+	
+	Dans un premier temps, l'étude des données débute avec une analyse de stationnarité réalisé avec le test de Mann-Kendall sur chacune des v.a. en jeu. Les résultats du test sont résumés dans le tableau \ref{tbl_Lac_Champlain_MannKendall}. 
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{lrr}
+			\toprule
+			Variable & Statistique & \textit{p-value} \\
+			\hline
+			$K$ & 0.0401 & 0.0028 \\ 
+			$X-u|X\geq u$ & 0.0228 & 0.5329 \\ 
+			$Z$ & 0.0379 & 0.5124 \\ 
+			$W$ & -0.1010 & 0.0060 \\ 
+			$D$ & 0.0461 & 0.2366 \\ 
+			\bottomrule
+		\end{tabular}
+		\caption{Résultats du test de Mann-Kendall calculé sur les différentes v.a. du modèle pour le jeu de données du lac Champlain.}
+		\label{tbl_Lac_Champlain_MannKendall}
+	\end{table}
+	On y voit que, avec un seuil $u$ qui est fixe, les v.a.de l'excédent de seuil, de la durée des événements extrêmes et des précipitations saisonnières non-extrêmes ne démontrent pas de signe de non-stationnarité, alors que les suites de v.a. $W$ et $K$ présentent de fortes évidences. Possiblement que le fait d'avoir utilisé un seuil fixe a fait en sorte de briser l'effet de non-stationnarité dans les distributions de $X-u|X\geq u$ et de $Z$. Cette hypothèse sera testée pour la prochaine version de ce travail.\\
 
-		Du point de vue des excédents de seuil, le test de Mann-Kendall offre une statistique de test de 0.1705 et de 0.5681. Conséquemment, au seuil de 5\%, on ne peut rejeter l'hypothèse nulle que les données proviennent de la loi normale non stationnaire ainsi paramétrée.
+	Pour ce qui est de la détermination du seuil $u$ servant à séparer les événements extrêmes des saisonniers, on applique l'approche proposée par \cite{bader2018automated} pour trouver un seuil optimal de 26.67mm de pluie. Cette quantité correspond au $86.39^{\mathrm{e}}$ percentile des observations empiriques de $K$ et permet de conserver 340 observations en excédent de seuil.\\
 		
-		\subsection{Lac Claire}
+	Suite au calcul des réalisations de $X-u|X\geq u$, les tests d'Anderson-Darling et de Cramer-von Mises sont effectués selon la méthode suggérée par \cite{choulakian2001goodness} pour vérifier l'adéquation des excès de seuil avec la famille de loi GP. Ceux-ci offrent des \textit{p-value} de 0.132 et 0.130. Conséquemment, on ne peut rejeter l'hypothèse nulle que les excès de seuil sont issues de la loi de Pareto généralisée au seuil de 5\%.
+	
+	En ce qui a trait à la paramétrisation de la loi des excédents de seuil, considérant que le paramètre de forme de la loi GP obtenue de façon préliminaire avec la sélection de seuil automatique est de 0.06788321. La méthode utilisée pour trouver les estimateurs de la loi est la méthode des moments, conformément aux recommandations de \cite{hosking1987parameter}.
+	Les estimateurs finaux ainsi obtenus sont donc $\hat{\xi} = 0.08056533$ et $\hat{\sigma} = 15.26847280$ selon la paramétrisation définie en \eqref{cdf_GPD}. L'illustration \ref{qqplot_excedents} atteste de l'adéquation de la loi ainsi paramétrée.\\		
+
+	Du côté de la modélisation de $Z$, comme il a été soulevé avec le tableau \ref{tbl_Lac_Champlain_MannKendall}, les observations relatives aux précipitations non-extrêmes ne présentent pas d'évidence contre l'hypothèse de stationnarité lorsque le seuil $u$ utilisé est fixe. 
+	En conformité avec l'observation de \cite{jalbert2019modelling}, une loi normale stationnaire est testée pour modéliser les précipitations non-extrêmes. Cependant, comme le test de Shapiro-Wilk offre une \textit{p-value} de 0.03, la loi normale est écartée en faveur de la loi Gamma.
+	%
+	L'illustration \ref{qqplot_Z} atteste de l'adéquation de la loi avec les données pour les estimateurs des paramètres $\hat{\alpha}^{(Z)} = 14.47781$ et $\hat{\beta}^{(Z)} = 132.8195$, selon la paramétrisation que $\E[Z]=\alpha^{(Z)}/\beta^{(Z)}$. Les tests de Kolmogorov-Smirnov et d'Anderson-Darling donnent des \textit{p-values} de 0.708 et de 0.817. Conséquemment, on peut déduire que la loi gamma est adéquate dans ce contexte.\\
+
+	Du point de vue des temps inter-occurrences et de la durée des événements extrêmes, L'illustration \ref{hist_pmf} présente la fonction de masses de probabilités observée pour chacune de ces v.a. On voit alors que possiblement que les loi géométrique et Weibull discrétisée aurait une belle adéquation avec la v.a. $W$, tandis que les lois de Poisson, binomiale négative et Weibull discrétisée seraient intéressantes à tester pour la v.a. $D$.
+	
+	Afin de modéliser la tendance présentée dans l'illustration \ref{tendances_WD}, la variance des séries temporelles semble \textit{a priori} être stable dans les deux cas. Seule la moyenne semble avoir une tendance. Pour cette raison, on considère que l'espérance de la v.a. peut être modélisée à l'aide d'une fonction linéaire, soit $\E[W^{(m)}_i|t] = \mu(t) = a+bt,\ t\in\reel.$ Puis, le paramètre de forme de chacune des lois testées devient une fonction de cette moyenne. 
+	\begin{exemple}
+		Soit la v.a. $W$ telle que $W\sim \mathrm{Geo}(p),\ p\in[0,1],$ avec espérance $\E[W]<\infty$ définie comme $\E[W]= 1/p$. Pour paramétrer la loi de $W$ en tenant compte de la tendance, on pose $p(t) = 1/\mu(t),\ t\in\reel.$
+	\end{exemple}
+	\begin{exemple}
+		Soit la v.a. $W$ telle que $W\sim \mathrm{Weibull}(\alpha, \beta),\ \alpha,\beta>0,$ avec espérance $\E[W]<\infty$ définie comme $\E[W]= \frac{1}{\beta}\Gamma(1+1/\alpha)$. Pour paramétrer la loi de $W$ en tenant compte de la tendance, on pose $\beta(t) = \mu(t) / \Gamma(1+1/\alpha),\ \alpha>0,\ t\in\reel.$
+	\end{exemple}
+	Comme l'atteste le tableau \ref{tbl_aic_WD}, on trouve que la loi qui minimise l'AIC pour modéliser la v.a. $W$ est la loi géométrique non-stationnaire, tandis que, du côté de la v.a. $D$, c'est la loi Weibull discrétisée non-stationnaire qui performe le mieux.
+	En ce qui a trait aux paramètres des lois, on a $\hat{a}^{(W)} = 32.48488$, $\hat{b}^{(W)} =-0.000410909$ et $\hat{\alpha}^{(D)} = 2.104619$, $\hat{a}^{(D)} = 3.94734$, $\hat{b}^{(D)} = 1.746127e-05$.
+	
+	Un fait intéressant à observer est que, malgré que le test de Mann-Kendall n'offre aucune évidence contre la non-stationnarité de la v.a. $D$, l'AIC suggère de tenir compte d'une tendance dans la distribution marginale de cette v.a. tout de même. Afin de démystifier cela, l'illustration \ref{Tendance_D} permet de constater qu'il semble y avoir une légère tendance ascendante.
+	
+	Les illustrations \ref{qqplot_W} et \ref{qqplot_D}
+	présentent l'adéquation graphique des lois paramétrées pour les v.a. $W$ et $D$. {\red Il serait pertinent de faire un test du chi-2.}
+	\begin{table}[H]
+		\centering
+		\begin{tabular}{ll|ccc}
+			\toprule
+			V.a. & Tendance & \multicolumn{3}{c}{AIC des lois testées}\\
+			\hline
+			&& \textbf{Géometrique} & Binomiale nég. & Weibull disc.\\
+			\multirow{2}{1cm}{$W$}
+			& \textbf{Avec} & \textbf{3066.589} & 3068.48 & 3093.457\\
+			& Sans & 3152.568 & 3076.167 & 3091.457\\
+			\midrule
+					   && Binomiale nég. & Poisson & \textbf{Weibull disc.}\\
+			\multirow{2}{1cm}{$D$}
+			& \textbf{Avec} & 1391.907 & 1389.905 & \textbf{1378.473}\\
+			& Sans & 1393.333 & 1391.352 & 1383.088\\
+			\bottomrule
+		\end{tabular}
+		\caption{Comparaison de l'AIC des lois de probabilités testées pour modéliser les v.a. $W$ et $D$ selon qu'il y ait ou non une tendance qui soit tenue en compte.}
+		\label{tbl_aic_WD}
+	\end{table}	
+	
+	Soit $\boldsymbol{x} = \{(X_{i}^{(m)}-u|X_i^{(m)}\geq u), \forall i,m\}$, la suite des observations où $(X_{i}^{(m)}-u|X_{i}^{(m)}\geq u)$ représente l'excédent de seuil observé pour le $i$-ème événement de l'année $m$. 
+	Soit $\boldsymbol{w} = \{W_{i}^{(m)}, \forall i,m\}$, la suite des observations où $W_{i}^{(m)}$ représente le temps écoulé entre les $i$-ème et $(i-1)$-ème événements de l'année $m$.
+	Soit $\boldsymbol{d} = \{D_{i}^{(m)}, \forall i,m\}$, la suite des observations où $D_{i}^{(m)}$ représente la durée du $i$-ème événement extrême lors de l'année $m$.
+	Soit $\boldsymbol{t} = \{T_{i}^{(m)},\forall i,m\}$, la suite des observations où $T_i^{(m)}$ représente le temps de survenance du $i$-ème événement extrême lors de l'année $m$.
+	Soit $u^{(X)} = \P(X-u\leq\boldsymbol{x}|X>u)$, le vecteur des uniformes générés en évaluant la fonction de répartition marginale estimée pour les excédents de seuil.
+	Soit $u^{(W)} = \P(W\leq\boldsymbol{w}|\boldsymbol{t})$, le vecteur des uniformes générés en évaluant la fonction de répartition marginale estimée pour les temps inter-occurrences.
+	Soit $u^{(D)} = \P(D\leq\boldsymbol{d}|\boldsymbol{t})$, le vecteur des uniformes générés en évaluant la fonction de répartition marginale estimée pour la durée de chacun des événements observés.
+	\begin{remarque}
+		L'utilisation des fonctions de répartitions empiriques $F_n(x) = \mathrm{rank}(x)/(n+1)$ sous-tend l'hypothèse que les observations disponibles sont représentatives des minimums et maximums des distributions réelles des données. Hors, comme la v.a. des excédents de seuil fait partie de la famille des lois à valeurs extrêmes, cette hypothèse doit être rejetée. C'est pourquoi, il est mieux d'utiliser les fonctions de répartitions estimées pour produire les pseudo-observations plutôt que d'utiliser une méthode basée sur les rangs comme le suggère généralement la littérature sur la théorie des copules (voir p.ex. \cite{genest2007everything}). 
+	\end{remarque}
+
+	On peut étudier la dépendance entre les différentes v.a. du modèle en débutant par le calcul du coefficient de corrélation de Pearson sur les vecteurs d'uniformes observées pour chacune des v.a. De cette façon, on trouve la matrice des $\rho$ de Pearson \eqref{rho_Pearson}.
+	\begin{equation}\label{rho_Pearson}
+		\boldsymbol{\rho}_{P}(u^{(X)}, u^{(D)}, u^{(W)}) =
+		\begin{pmatrix}
+			 1.0000 & 0.1358 & 0.3689 \\ 
+			 0.1358 & 1.0000 & 0.0082 \\ 
+			 0.3689 & 0.0082 & 1.0000
+		\end{pmatrix}.
+	\end{equation}
+	Un test de Mantel-Haensel (voir \cite{mantel1963chi}) ne permet pas de rejeter l'hypothèse nulle d'indépendance entre les variables $D$ et $W$. Cependant, considérant que la dépendance est significative pour les autres paires de v.a., alors on considère tout de même une copule tri-variée pour modéliser la dépendance entre ces v.a. L'illustration \ref{pairs_scatterplots_XWD} présente les nuages de points ainsi qu'une estimation des copules représentant la dépendance entre les paires de v.a. 
+	\begin{figure}[h]
+		\centering
+		\includegraphics[height=0.4\textheight]{graphiques/LacChamplain/pairs_scatterplots_XWD}
+		\caption{Triangle supérieur de la matrice: Nuage de points des paires de v.a. Triangle inférieur de la matrice: graphiques de contours pour les estimations des  copules empiriques selon une approche par noyau gaussien.}
+		\label{pairs_scatterplots_XWD}
+	\end{figure}
+	
+	La structure de copule en vigne utilisée est représentée par la matrice C-vine \eqref{structure_copule_en_vigne}(voir \cite{joe2010regular}, \cite{dissmann2013selecting} ou la documentation de la librairie \texttt{VineCopula}\footnote{\url{https://cran.r-project.org/web/packages/VineCopula/VineCopula.pdf}} sur \texttt{CRAN})
+	\begin{equation}\label{structure_copule_en_vigne}
+		M = \begin{pmatrix}
+			1 &  &  \\ 
+			2 & 2 &  \\ 
+			3 & 3 & 3
+		\end{pmatrix},
+	\end{equation}
+	où les indices 1,2 et 3 réfèrent respectivement à $u^{(X)}, u^{(W)}, u^{(D)}$.
+	La matrice \ref{structure_copule_en_vigne} peut être exprimée sous la forme de la structure C-Vine présentée dans l'illustration \ref{structure_CVine}.
+	\begin{figure}[H]
+		\centering
+		\includegraphics[height=0.15\textheight]{graphiques/structure_CVine}
+		\caption{Structure C-Vine de la copule tri-variée modélisant la dépendance entre (1) $u^{(X)}$, (2) $u^{(W)}$ et (3) $u^{(D)}$.}
+		\label{structure_CVine}
+	\end{figure}
+	Pour ce qui est du choix des copules bi-variées composant la copule en vigne,
+	les copules à valeur extrêmes de Tawn de type 1 ainsi que celle de Gumbel sont prises en compte. De plus, on considère la famille des copules archimédiennes telles que celle de Frank, de Clayton ainsi que les copules BB1-BB3 et BB6-BB7 décrites dans \cite{joe1997multivariate}. Finalement, on considère également des rotations à $180\degres$ de ces copules; dans ce cas, on parle alors de copules de survie.
+	Le tableau \ref{tbl_estim_copules} présente les résultats obtenus pour les 5 copules offrant la meilleure adéquation avec les couples d'observations selon les critères de l'AIC et du BIC.
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{llcccc}
+			\toprule
+			Variables & Copules & $\boldsymbol{\theta}$ & log-vrais. & AIC & BIC \\ 
+			\hline
+			\multirow{5}{3cm}{$(u^{(X)},u^{(D)})$}
+			& Gumbel & 1.29 & 24.77 & -47.55 & -43.72 \\ 
+			& Frank  & 2.33 & 24.27 & -46.55 & -42.72 \\ 
+			& BB8 & [2.45, 0.75] & \textbf{25.83} & \textbf{-47.65} & -40.00 \\ 
+			& \textbf{Clayton (180\textdegree)} & \textbf{0.49} & 24.81 & -47.61 & \textbf{-43.78} \\ 
+			& BB1 (180\textdegree) & [0.41,1.05] & 25.29 & -46.58 & -38.92 \\ 
+			\midrule
+			\multirow{5}{3cm}{$(u^{(X)},u^{(W)}|u^{(D)})$}
+			& \textbf{Indépendance} & $\emptyset$ & 0.00 & 0.00 & \textbf{0.00} \\ 
+			& Gumbel  & 1.1 & 2.12 & -2.25 & 1.58 \\ 
+			& Frank & 0.81 & 2.80 & \textbf{-3.60} & 0.23 \\ 
+			& Clayton (180\textdegree) & 0.18 & 2.26 & -2.52 & 1.31 \\ 
+			& Tawn type 1 (180\textdegree) & [1.34, 0.20] & \textbf{3.57} & -3.13 & 4.52 \\ 
+			\bottomrule
+		\end{tabular}
+	\caption{Résultats de l'estimation des copules candidates.}
+	\label{tbl_estim_copules}
+	\end{table}	
+	En ce qui a trait à la dépendance unissant le couples $(u^{(W)}, u^{(D)})$, comme il a été sus-mentionné que la dépendance n'était pas significative, la copule d'indépendance est utilisée. Selon le critère du BIC, la copule retenue pour modéliser la dépendance entre les excédents de seuil et les temps inter-occurrences est la copule de survie de Clayton. Pour ce qui est du deuxième arbre de la copule en C-vine, on observe qu'en conditionnant sur les pseudo-observations de $D$, la force de dépendance entre les deux autres v.a. a significativement diminué, laissant percevoir que la dépendance \textit{a priori} du couple de v.a. $(u^{(x)}, u^{(W)})$ est fortement influencée par celle observée avec $u^{(D)}$. L'hypothèse d'indépendance conditionnelle devient alors une hypothèse plausible. Conséquemment, on peut résumer le modèle de dépendance à une copule bi-variée unissant les v.a. des excédents de seuil et de la durée des événements extrêmes. 
+	\begin{remarque}
+		Afin de tenir compte du fait que deux des trois v.a. impliquées ont un support discret, \cite{genest2007primer} suggère de ne pas utiliser la méthode des moments pour paramétrer les copules puisque cela insérerait un biais. La méthode de paramétrisation s'appuie donc sur la méthode de la pseudo-vraisemblance (voir \cite{kim2007comparison}).
+	\end{remarque} 
+	
+	Pour ce qui est de la dépendance unissant les réalisations de $Z$ et de $V$, on trouve que le rho de Spearman empirique est de -0.244. Néanmoins, comme l'ajout d'une copule pour modéliser cette dépendance dégrade les résultats de prédiction dû à la complexité du modèle, aucune copule n'est utilisée dans ce cas. Cette décision est cohérente avec l'approche adoptée par \cite{jalbert2019modelling}.\\
+	
+	Finalement, afin de pouvoir étudier le comportement de $S_{T_0}^{(m)}(t)$, on procède par simulation. À cet effet, l'algorithme \ref{algo_Simul_process_St} propose une procédure pour obtenir une matrice de valeurs simulées sur un horizon de temps variable. 
+	L'illustration \ref{qqplot_S} compare les quantiles observés aux quantiles simulés avec l'algorithme \ref{algo_Simul_process_St}. Une analyse plus approfondie des résultats obtenus est réalisée dans la section \ref{sect_resultats}.
 		
 	
-	\section{Discussion}
-	--- \href{https://coop-ist.cirad.fr/content/download/4909/36893/version/2/file/Rediger-discussion-conclusion-article-scientifique.pdf}{How to write a Discussion} --- (À rédiger tout de suite après les résultats)
+	\subsection{Rivière Clearwater}\label{sect_Clearwater}
+	La rivière Clearwater se trouve en Alberta, au Canada.
+	Les données utilisées proviennent de la station \texttt{07CD001} qui est située près de Fort McMurray, aux coordonnées GPS suivantes: (56°41'06" N, 111°15'18" W). L'illustration \ref{Map_ClearwaterRiver} présente l'emplacement de la station. Les données utilisées couvrent la période de 1960 à 2013 (53 ans; 4823 observations printanières). Celles-ci sont disponibles sur le site des Relevés hydrologiques du Canada \footnote{\url{https://eau.ec.gc.ca/search/historical_f.html}}. Aucune donnée manquante n'est recensée dans cette base de données.\\
 	
-	Ajouter les points suivants:
-	\begin{enumerate}
-		\item \textbf{donnez du poids à votre travail} (Mettez toujours en valeur vos résultats par rapport à ceux des autres, et non l’inverse)
-		\item \textbf{Interpréter les résultats}
-		\item \textbf{Conséquences des résultats}
-		\item Placez les arguments les plus importants au début de la discussion
-	\end{enumerate}
+	Pour cette deuxième étude de cas, on reprend la méthodologie décrite dans la section \ref{sect_LacChamplain}. Du point de vue de la stationnarité, le test de Mann-Kendall appliquée aux différentes v.a. observées dans le jeu de données de la Rivière Clearwater offre les résultats du tableau \ref{tbl_Clearwater_MannKendall}.
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{lrr}
+			\toprule
+			Variable & Statistique & \textit{p-value} \\
+			\hline
+			$K$ & -0.0621 & 0.0056 \\ 
+			$X-u|X\geq u$ & 0.1010 & 0.1388 \\ 
+			$Z$ & -0.0587 & 0.5357 \\ 
+			$W$ & 0.1710 & 0.0123 \\ 
+			$D$ & 0.2690 & 0.0002 \\ 
+			\bottomrule
+		\end{tabular}
+		\caption{Résultats du test de Mann-Kendall calculé sur les différentes v.a. du modèle pour le jeu de données de la rivière ClearWater}
+		\label{tbl_Clearwater_MannKendall}
+	\end{table}
+	Dans celui-ci, on a le même constat quant aux v.a. des excès de seuil et des précipitations non-extrêmes que dans la section \ref{sect_LacChamplain}. C.-à-d. que l'utilisation d'un seuil fixe semble briser la non-stationnarité qui existe pour la v.a. $K$, mais qui n'est plus présente pour $X-u|X>u$ et $Z$. Par la suite, il est plus clair dans ce cas-ci que la v.a. $D$ est non-stationnaire par rapport à l'étude de cas précédente.\\
+	
+	En ce qui a trait au seuil de valeurs extrêmes calculé avec la méthode de \cite{bader2018automated}, on trouve $u=18.29828$. Celui-ci correspond au $88.74^{\mathrm{e}}$ percentile empirique et permet de conserver 100 observations pour l'étude des événements extrêmes. Le test d'Anderson-Darling et de Cramer-von Mises d'adéquation à la famille GP offrent des seuils observés de 0.452 et de 0.725. L'adéquation est donc excellente comme en atteste l'illustration \ref{qqplot_excedents_2}. Les estimateurs des paramètres de la loi selon la méthode des moment pondérés (voir \cite{hosking1987parameter}) sont  $\hat{\xi}=0.1317715$ et $\hat{\sigma}=14.2908019$.\\
+	
+	Du point de vue des précipitations non extrêmes, un test de Shapiro-Wilk offre un seuil observé de 0.53576. On ne peut donc pas rejeter l'hypothèse nulle que la distribution empirique provient de la loi normale. Une comparaison de l'AIC d'une loi normale avec la loi gamma vient confirmer que la première est plus vraisemblable pour modéliser les données. Les estimateurs des paramètres trouvés sont alors $\hat{\mu}^{(Z)}=63.54724$, $\hat{\sigma}^{(Z)}=19.46997$. L'illustration \ref{qqplot_Z_2} compare les quantiles observés à ceux estimés.\\
+	
+	Jusqu'à maintenant, l'adéquation des v.a. étudiées pour ce jeu de données était quasi-parfaite. Cependant pour ce qui est de la distribution de la v.a. $W$, les choses se corsent. En effet, l'illustration \ref{hist_pmf_W_2} présente l'histogramme de la fonction de masses de probabilités empiriques pour cette v.a. On y voit que la loi sous-jacente à la v.a. $W$ possède une queue de distribution très lourde. Par ailleurs, considérant que les données sont tronquées et que la distribution est non stationnaire, la modélisation de cette v.a. représente un défi de taille.
+	{\red À suivre...}
+	
+	
+	
+	
+	
+	\subsection{Résultats}\label{sect_resultats}
+		
+		\begin{figure}[H]
+			\centering
+			\includegraphics[width=0.7\textwidth]{graphiques/LacChamplain/qqplot_St}
+			\caption[QQ-plots]{Diagrammes quantile-quantile de $S_{T_0}^{(m)}(91)$ pour l'étude de cas de la section \ref{sect_LacChamplain}: La ligne bleue présente la droite de tendance des quantiles. Les pointillés présentent l'intervalle de confiance au seuil de 5\% pour cette droite et la ligne rouge est la diagonale d'adéquation parfaite. L'objectif est que la diagonale rouge se situe dans l'intervalle de confiance.}
+			\label{qqplot_S}
+		\end{figure}
+	
+	\section{Discussion}\label{sect_discussion}
+%	--- \href{https://coop-ist.cirad.fr/content/download/4909/36893/version/2/file/Rediger-discussion-conclusion-article-scientifique.pdf}{How to write a Discussion} --- (À rédiger tout de suite après les résultats)
+%	
+%	Ajouter les points suivants:
+%	\begin{enumerate}
+%		\item \textbf{donnez du poids à votre travail} (Mettez toujours en valeur vos résultats par rapport à ceux des autres, et non l’inverse)
+%		\item \textbf{Interpréter les résultats}
+%		\item \textbf{Conséquences des résultats}
+%		\item Placez les arguments les plus importants au début de la discussion
+%	\end{enumerate}
 
 	\paragraph{Limites}: Dans la méthodologie utilisée, mentionnons que le test statistique pour valider l'indépendance séquentielle des données utilisée est expérimentale. Également, la quantité de données ne permet pas d'avoir une appréciation fiable de la stationnarité de la dépendance entre les variables conformément à \cite{chebana2021multivariate}. Ceci étant dit, les hypothèses de stationnarité de la dépendance et de l'indépendance séquentielle des variables aléatoires réduit considérablement la complexité du modèle. En ce qui a trait à la principale faiblesses du modèle par rapport à ceux n'agrégeant pas les jours de pluie est que cette agrégation réduit considérablement le nombre d'observations disponibles pour entraîner le modèle. Malgré tout, les résultats obtenus sont excellents et le fait de considérer des périodes de plusieurs jours fait en sorte que la loi GP ainsi entraînée obtient un estimateur de forme lui permettant d'avoir un support non fini.
 	
-	\paragraph{conclusion:} Un paragraphe concluant la discussion
-	\begin{enumerate}
-		\item redonnez le point fort, c’est-à-dire le résultat majeur et son apport original dans le champ scientifique concerné : Nos résultats ont montré que... ;
-		\item ne terminez jamais sur les travaux des autres, car cela met en doute la validité du travail présenté et cela en diminue la portée. En conséquence, la conclusion ne comporte aucune référence bibliographique ;
-		\item évitez les formules du type : il se pourrait que… Il serait possible de… Il pourrait être suggéré…
-		Éventuellement… ;
-		\item évitez de suggérer des études à plus grande échelle ! Cela sous-entend qu’elles doivent être conduites pour vérifier ce que vous avez fait ;
-		\item évitez de terminer par : Nous sommes en train d'étudier… Le relecteur répliquera : Plutôt que de publier cet article, attendons les résultats !
-	\end{enumerate}
+%	\paragraph{conclusion:} Un paragraphe concluant la discussion
+%	\begin{enumerate}
+%		\item redonnez le point fort, c’est-à-dire le résultat majeur et son apport original dans le champ scientifique concerné : Nos résultats ont montré que... ;
+%		\item ne terminez jamais sur les travaux des autres, car cela met en doute la validité du travail présenté et cela en diminue la portée. En conséquence, la conclusion ne comporte aucune référence bibliographique ;
+%		\item évitez les formules du type : il se pourrait que… Il serait possible de… Il pourrait être suggéré…
+%		Éventuellement… ;
+%		\item évitez de suggérer des études à plus grande échelle ! Cela sous-entend qu’elles doivent être conduites pour vérifier ce que vous avez fait ;
+%		\item évitez de terminer par : Nous sommes en train d'étudier… Le relecteur répliquera : Plutôt que de publier cet article, attendons les résultats !
+%	\end{enumerate}
 	
-	\subsection{Pour aller plus loin ({\red à inclure ?})}
-	Pour aller plus loin dans la construction du modèle, il resterait à considérer, non seulement le temps, mais aussi l'espace dans le modèle. En effet, \cite{baigorria2007understanding} démontre qu'il existe une forte corrélation entre les stations avoisinantes. À cette fin, certains auteurs utilisent des méthodes de régression telles que \cite{hession2011spatial} et \cite{begueria2006mapping} afin de réaliser un lissage spatial des paramètres de leur modèle de précipitations. Cependant, une telle approche sous-tend l'hypothèse que la dépendance unissant les différentes stations est linéaire. Or, comme l'a démontré \cite{zhang2019copulas} cette relation n'est pas linéaire puisque la dépendance tend à être plus forte dans les ailes de distributions conjointes. C'est pourquoi ce dernier propose l'utilisation de copules en vignes. Cependant, cette dernière approche ajoute une grande complexité au modèle et ne permet pas de faire un lissage à grande échelle. Ainsi, pour aller plus loin, on pourrait tester une approche utilisant les réseaux de neurones convolutifs récurrents telle que présentée dans \cite{liu2016application}.\\
+	\subsection{Pour aller plus loin}\label{sect_pour_aller_plus_loin}
+	
+	{\red Considérer \cite{cheng2014non} pour le calcul de la période de retour dans le cas non-stationnaire.}\\
+	
+	La prochaine étape du projet serait de considérer un seuil qui sont non-stationnaire conformément à \cite{kysely2010estimating} et \cite{begueria2011assessing}. De plus, il restera à comparer les résultats du modèle proposé avec ceux obtenus avec le modèle de \cite{jalbert2019modelling} et possiblement d'autres articles concurrents qui n'utilisent pas de regroupement des observations.\\
+	
+	Pour aller plus loin dans la construction du modèle, on pourrait considérer, non seulement le temps, mais aussi l'espace dans le modèle. En effet, \cite{baigorria2007understanding} démontre qu'il existe une forte corrélation entre les stations avoisinantes. À cette fin, certains auteurs utilisent des méthodes de régression telles que \cite{hession2011spatial} et \cite{begueria2006mapping} afin de réaliser un lissage spatial des paramètres de leur modèle de précipitations. Cependant, une telle approche sous-tend l'hypothèse que la dépendance unissant les différentes stations est linéaire. Or, comme l'a démontré \cite{zhang2019copulas} cette relation n'est pas linéaire puisque la dépendance tend à être plus forte dans les ailes de distributions conjointes. C'est pourquoi ce dernier propose l'utilisation de copules en vignes. Cependant, cette dernière approche ajoute une grande complexité au modèle et ne permet pas de faire un lissage à grande échelle. Ainsi, pour aller plus loin, on pourrait tester une approche utilisant les réseaux de neurones convolutifs récurrents telle que présentée dans \cite{liu2016application}.\\
 	
 	Finalement, pour revenir à la motivation initiale de \cite{jalbert2019modelling} et de notre modèle, l'objectif ultime serait de prédire les inondations de manière exhaustive. Pour se faire, en s'inspirant de \cite{riboust2016analysis}, quelqu'un pourrait proposer un modèle tri-varié où les variables en jeu seraient les précipitations hivernales ainsi que la température et les précipitations printanières. Ainsi, on aurait un modèle complet pour prédire la quantité totale d'eau accumulée lors du printemps.
 	
@@ -324,9 +540,388 @@
 		
 	\section*{Remerciements}
 	L'auteur aimerait remercier l'INRS ainsi que la Chaire d'actuariat de l'Université Laval pour avoir financé ce projet. Il aimerait également remercier les professeurs Étienne Marceau et Hélène Cossette pour leurs conseils et commentaires, de même que Fateh Chebana pour avoir supervisé le projet.
-		
 	
 	\bibliographystyle{apalike}
-	\bibliography{BibHydrologie}		
+	\bibliography{BibHydrologie}
+	
+		
+	\clearpage
+	\appendix
+	\section{Exemple illustrant le modèle}\label{ex_construction_model}
+	Pour illustrer les différentes composantes du modèle décrit dans la section \ref{subsect_description_modele}, le tableau \ref{tbl_exemple_illustrer_model} utilise les 15 premières observations printanières de la base de données Clearwater River, pour 5 années consécutives.
+	%
+	\begin{table}[H]
+		\centering
+		\resizebox{\columnwidth}{!}{%
+		\begin{tabular}{c|ccccccccccccccc}
+			\toprule
+			$l$ & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 \\ 
+			\midrule
+			$Y^{(2009)}_l$ & - & - & - & - & - & 0.50 & - & 1.99 & 0.50 & - & 0.50 & 3.48 & 0.50 & - & - \\ 
+			$Y^{(2010)}_l$ & 0.49 & - & - & 0.49 & - & - & - & 2.05 & 43.78 & 3.42 & 3.91 & - & - & 0.49 & 0.49 \\ 
+			$Y^{(2011)}_l$ & - & 0.77 & 0.13 & - & - & - & - & 0.13 & - & - & 2.57 & 1.16 & - & - & - \\ 
+			$Y^{(2012)}_l$ & 0.13 & 1.54 & - & 0.13 & 0.13 & 0.13 & - & - & - & 0.39 & - & 0.13 & 3.47 & 11.97 & 0.26 \\ 
+			$Y^{(2013)}_l$ & - & - & - & 0.71 & 0.20 & - & - & 0.20 & - & 1.62 & 2.94 & - & 0.51 & - & 0.20 \\ 
+			\bottomrule
+		\end{tabular}}
+	\caption{Observations de $Y_l^{(m)}$, pour $l=1,\dots,15$ et $m=2009,\dots,2013$, dans la base de données Clearwater River. Cette variable est représentée par la colonne \texttt{Precip. (mm)} et la période couvre du $1^{\mathrm{er}}$ au 15 avril des années 2009 à 2013.}
+	\label{tbl_exemple_illustrer_model}
+	\end{table}
+	
+	Avec les observations du tableau \ref{tbl_exemple_illustrer_model}, on  peut réaliser le clustering de manière à trouver les résultats du tableau \ref{tbl_exemple_illustrer_model2}. Puis, si on fixe un seuil $u=1$, on obtient $\mathcal{X}^{(2009)} = \{2,3\},\ \mathcal{X}^{(2010)} = \{3\},\ \mathcal{X}^{(2011)} = \{3\},\
+	\mathcal{X}^{(2012)} = \{1,4\},\ \mathcal{X}^{(2013)} = \{3\}.
+	$ On trouve alors les résultats des tableaux \ref{tbl_exemple_illustrer_model3} et \ref{tbl_exemple_illustrer_model4}. 
+	\begin{table}[H]
+		\centering
+		\begin{tabular}{c|ccccc}
+			\toprule
+			$j$ & 1 & 2 & 3 & 4 & 5 \\
+			\midrule
+			$\mathcal{C}^{(2009)}_j$ & 6 & 8,9 & 11,12,13 & - & -\\
+			$\mathcal{C}^{(2010)}_j$ & 1 & 4 & 8,9,10,11 &14,15 &- \\
+			$\mathcal{C}^{(2011)}_j$ & 2,3 & 8 & 11,12 & - & -\\
+			$\mathcal{C}^{(2012)}_j$ & 1,2 & 4,5,6 & 10 & 12,13,14,15 &- \\
+			$\mathcal{C}^{(2013)}_j$ & 4,5 & 8 & 10,11 & 13 & 15 \\
+			\midrule
+			$K^{(2009)}_j$ & 0.50 & 2.49 & 4.48 & - & -\\
+			$K^{(2010)}_j$ & 0.49 & 0.49 & 53.2 & 0.98 & -\\
+			$K^{(2011)}_j$ & 0.90 & 0.13 & 3.73 & - & - \\
+			$K^{(2012)}_j$ & 1.67 & 0.39 & 0.39 & 15.83 & - \\
+			$K^{(2013)}_j$ & 0.91 & 0.20 & 4.56 & 0.51 & 0.20\\
+			\bottomrule
+		\end{tabular}
+	\caption{Clusterisation des observations du tableau \ref{tbl_exemple_illustrer_model}.}
+	\label{tbl_exemple_illustrer_model2}
+	\end{table}
+
+	\begin{table}[H]
+		\parbox{0.47\linewidth}{
+		\centering
+		\begin{tabular}{c|ccc}
+			\toprule
+			$i$ &1 &2 & 3\\
+			\hline
+			$X^{2009}_i$ & 2.49 & 4.48 & - \\
+			$X^{2010}_i$ & 53.2 & - & -\\
+			$X^{2011}_i$ & 3.73 & - & -\\
+			$X^{2012}_i$ & 1.67 & 15.83 & -\\
+			$X^{2013}_i$ & 4.56 & - & -\\
+			\midrule
+			$D^{2009}_i$ & 2 & 3 & - \\
+			$D^{2010}_i$ & 4 & - & - \\
+			$D^{2011}_i$ & 2 & - & - \\
+			$D^{2012}_i$ & 2 & 4 & - \\
+			$D^{2013}_i$ & 2 & - & - \\
+			\midrule
+			$W^{2009}_i$ & 7 & 1 & $\geq2$ \\
+			$W^{2010}_i$ & 7 & $\geq4$ & - \\
+			$W^{2011}_i$ & 10 & $\geq3$ & - \\
+			$W^{2012}_i$ & 0 & 9 & - \\
+			$W^{2013}_i$ & 9 & $\geq4$ & - \\
+			\bottomrule
+		\end{tabular}
+		\caption{Construction des v.a. relatives aux événements excédents le seuil $u=1$, à partir du tableau \ref{tbl_exemple_illustrer_model2}.}
+		\label{tbl_exemple_illustrer_model3}
+		%
+		} \hfill \parbox{0.47\linewidth}{
+		%
+		\centering
+		\begin{tabular}{c|ccc}
+			\toprule
+			\multicolumn{4}{l}{Format date} \\
+			$i$ & 0 & 1 & 2 \\
+			\hline
+			$T^{(2009)}_i$ & 2009-04-01 & 2009-04-08 & 2009-04-11\\
+			$T^{(2010)}_i$ & 2010-04-01 & 2010-04-08 & - \\
+			$T^{(2011)}_i$ & 2011-04-01 & 2011-04-11 & - \\
+			$T^{(2012)}_i$ & 2012-04-01 & 2012-04-01 & 2012-04-12 \\
+			$T^{(2013)}_i$ & 2013-04-01 & 2013-04-10 & - \\
+			\midrule
+			\multicolumn{4}{l}{Format numérique} \\
+			$i$ & 0 & 1 & 2 \\
+			\hline
+			$T^{(2009)}_i$ & 0 & 7 & 10\\
+			$T^{(2010)}_i$ & 365 & 372 & - \\
+			$T^{(2011)}_i$ & 730 & 740 & - \\
+			$T^{(2012)}_i$ & 1096 & 1096 & 1107 \\
+			$T^{(2013)}_i$ & 1461 & 1470 & - \\
+			\midrule
+		\end{tabular}
+		\caption{Temps d'arrivée des événements décrits dans le tableau \ref{tbl_exemple_illustrer_model3}.}
+		\label{tbl_exemple_illustrer_model4}
+	}
+	\end{table}
+
+	Avec les tableaux \ref{tbl_exemple_illustrer_model2} et \ref{tbl_exemple_illustrer_model3}, on peut calculer les résultats présentés dans le tableau \ref{tbl_exemple_illustrer_model5}.
+	\begin{table}[H]
+		\centering
+		\begin{tabular}{c|ccccc}
+			\toprule
+			$m$ & 2009 & 2010 & 2011 & 2012 & 2013 ­\\
+			\hline
+			$N^{(m)}_{T_0}(15)$ & 2 & 1 & 1 & 2 & 1 \\
+			$V^{(m)}_{T_0}(15)$ & 6.97 & 53.2 & 3.73 & 17.5 & 4.56 \\
+			$Z^{(m)}$ & 0.5 & 1.96 & 1.03 & 0.78 & 1.82 \\
+			\hline
+			$S^{(m)}_{T_0}(15)$ & 7.47 & 55.16 & 4.76 & 18.28 & 6.38\\
+			\bottomrule 
+		\end{tabular}
+		\caption{Représentation de la quantité de pluie totale tombée pendant les 15 premiers jours du printemps des années 2009 à 2013 selon la notation présentée dans la section \ref{sect_model}.}
+		\label{tbl_exemple_illustrer_model5}
+	\end{table}
+
+
+	\section{Illustrations}
+		\begin{figure}[H]
+			\centering
+			\includegraphics[height=0.35\textheight]{graphiques/LacChamplain/Map_Burlington}
+			\caption{Emplacement des stations (1) \texttt{USC00431072}  et (2) \texttt{USW00014742} pour les données de Burlington, au Vermont, USA. {\footnotesize (Image tirée de Google Map)}}
+		\end{figure}
+		\begin{figure}[H]
+			\centering
+			\includegraphics[height=0.35\textheight]{graphiques/Clearwater/Map_ClearwaterRiver}
+			\caption{Emplacement de la station \texttt{07CD001} où ont été collectées les données pour l'exemple de la rivière Clearwater. Les coordonnées de la stations sont Longitude -111.2554 et Latitude 56.68528. {\footnotesize (Image tirée de Google Map)}}
+			\label{Map_ClearwaterRiver}
+		\end{figure}
+	
+		\begin{figure}[H]
+			\centering
+			\begin{subfigure}[l]{0.45\textwidth}
+				\includegraphics[width=\textwidth]{graphiques/LacChamplain/hist_pmf_D}
+				\caption{D}
+				\label{hist_pmf_D}
+			\end{subfigure}
+			\begin{subfigure}[l]{0.45\textwidth}
+				\includegraphics[width=\textwidth]{graphiques/LacChamplain/hist_pmf_W}
+				\caption{W}
+				\label{hist_pmf_W}
+			\end{subfigure}
+		\caption{Fonctions de masses de probabilités empiriques des v.a. $W$ et $D$ pour l'étude de cas de la section \ref{sect_LacChamplain}.}
+		\label{hist_pmf}
+		\end{figure}
+	
+		\begin{figure}[H]
+			\centering
+			\begin{subfigure}[l]{0.45\textwidth}
+				\includegraphics[width=\textwidth]{graphiques/Clearwater/hist_pmf_D}
+				\caption{D}
+				\label{hist_pmf_D_2}
+			\end{subfigure}
+			\begin{subfigure}[l]{0.45\textwidth}
+				\includegraphics[width=\textwidth]{graphiques/Clearwater/hist_pmf_W}
+				\caption{W}
+				\label{hist_pmf_W_2}
+			\end{subfigure}
+			\caption{Fonctions de masses de probabilités empiriques des v.a. $W$ et $D$ pour l'étude de cas de la section \ref{sect_Clearwater}.}
+			\label{hist_pmf_2}
+		\end{figure}
+	
+		\begin{figure}[H]
+			\centering
+			\begin{subfigure}[t]{\textwidth}
+				\centering
+				\includegraphics[width=\textwidth]{graphiques/LacChamplain/Tendance_W}
+				\caption{$W_i^{(m)}$}
+				\label{Tendance_W}
+			\end{subfigure}
+			\begin{subfigure}[b]{\textwidth}
+				\centering
+				\includegraphics[width=\textwidth]{graphiques/LacChamplain/Tendance_D}
+				\caption{$D_i^{(m)}$}
+				\label{Tendance_D}
+			\end{subfigure}
+			\caption{Séries temporelles des v.a. $W_i^{(m)}$ et $D_i^{(m)}$, pour $i=1,\dots,91,$ $m=1940,dots,2020$.}
+			\label{tendances_WD}
+		\end{figure}
+	
+		\begin{figure}[H]
+			{
+				\centering
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/LacChamplain/qqplot_excedents}
+					\caption{$X-u|X>u$}
+					\label{qqplot_excedents}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/LacChamplain/qqplot_Z}
+					\caption{$Z$}
+					\label{qqplot_Z}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/LacChamplain/qqplot_W}
+					\caption{$W$}
+					\label{qqplot_W}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/LacChamplain/qqplot_D}
+					\caption{$D$\textsuperscript{*}}
+					\label{qqplot_D}
+				\end{subfigure}
+				\caption[QQ-plots]{Diagrammes quantile-quantile pour l'étude de cas de la section \ref{sect_LacChamplain}: La ligne bleue présente la droite de tendance des quantiles. Les pointillés présentent l'intervalle de confiance au seuil de 5\% pour cette droite et la ligne rouge est la diagonale d'adéquation parfaite. L'objectif est que la diagonale rouge se situe dans l'intervalle de confiance.
+				}
+				\label{qqplots_LacChaplain}
+			}
+			{\footnotesize *: À noter qu'aucun intervalle de confiance n'est dessiné autour de la droite pour l'illustration \ref{qqplot_D}. La raison étant que la fonction \texttt{qqPlot} de la librairie \texttt{car} ne fonctionne pas bien lorsqu'il y a trop d'égalités dans les quantiles utilisés.}
+		\end{figure}
+	
+		\begin{figure}[H]
+			{
+				\centering
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/Clearwater/qqplot_excedents}
+					\caption{$X-u|X>u$}
+					\label{qqplot_excedents_2}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+					\includegraphics[width=\textwidth]{graphiques/Clearwater/qqplot_Z}
+					\caption{$Z$}
+					\label{qqplot_Z_2}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+%					\includegraphics[width=\textwidth]{graphiques/Clearwater/qqplot_W}
+					\caption{$W$}
+					\label{qqplot_W_2}
+				\end{subfigure}
+				\begin{subfigure}[b]{0.45\textwidth}
+%					\includegraphics[width=\textwidth]{graphiques/Clearwater/qqplot_D}
+					\caption{$D$\textsuperscript{*}}
+					\label{qqplot_D_2}
+				\end{subfigure}
+				\caption[QQ-plots]{Diagrammes quantile-quantile pour l'étude de cas de la section \ref{sect_Clearwater}: La ligne bleue présente la droite de tendance des quantiles. Les pointillés présentent l'intervalle de confiance au seuil de 5\% pour cette droite et la ligne rouge est la diagonale d'adéquation parfaite. L'objectif est que la diagonale rouge se situe dans l'intervalle de confiance.
+				}
+				\label{qqplots_clearwater}
+			}
+			{\footnotesize *: À noter qu'aucun intervalle de confiance n'est dessiné autour de la droite pour l'illustration \ref{qqplot_D}. La raison étant que la fonction \texttt{qqPlot} de la librairie \texttt{car} ne fonctionne pas bien lorsqu'il y a trop d'égalités dans les quantiles utilisés.}
+		\end{figure}
+		
+		
+	
+	
+	
+	\section{Algorithme de simulation}\label{annexe_algo_simul}
+		Soit $F_{X-u|X>u}$, $F_W$ et $F_D$, les fonctions de répartition théoriques des v.a. $\{X-u|X>u\}$, $W$ et $D$. Soit $F^{-1}_{X-u|X>u}$, $F^{-1}_W$ et $^{-1}F_D$, les fonctions quantiles de ces mêmes v.a. La procédure de simulation permettant de générer des réalisations de $S{(m)}(91)$ est décrit dans l'algorithme \ref{algo_Simul_process_St}.\\
+%		Soit $G$, la copule en vigne modélisant la dépendance entre les v.a. $\{X-u|X>u\},\ W$ et $D$ telle que la fonction de répartition tri-variée de ces v.a. peut être exprimée comme $H_1(x,w,d|t) = G\left(F_{X-u|X>u}(x), F_{W}(w|t), F_{D}(d|t)\right)$, où $x>u$, $w,d,t\in\natural$ selon le théorème de Sklar. Soit $C$, la copule bi-variée modélisant la dépendance entre le processus aléatoire $V^{(m)}_{T_0}(91)$ et la v.a. $Z^{(m)},\forall m$, telle que la fonction de répartition bi-variée de ces composantes aléatoires peut être exprimée comme $H_2(v,z) = C\left(F_{V^{(m)}_{T_0}(91)}(v), F_{Z^{(m)}}(z)\right),\ v,z\geq 0,\ t\in\natural$. Soit $C_{1|2}(u_1|u_2)$ la copule conditionnelle associée à ce dernier lien de dépendance telle que $C_{1|2}(u_1|u_2) = \frac{\partial}{\partial u_2} C(u_1, u_2),\ u_1,u_2\in[0,1].$ 
+		
+		\SetKwRepeat{Do}{do}{while}
+		\resizebox{!}{0.435\textheight}{
+		\begin{algorithm}[H]
+			\DontPrintSemicolon
+			\SetAlgoLined
+			\SetKwInOut{Input}{input}\SetKwInOut{Output}{output}
+			\Input{
+				$m$ (entiers): vecteur des années pour lesquelles on désire simuler;\\
+				$t$ (entier): la durée du processus (91 jours dans notre cas);\\
+				$N_{\mathrm{max}}$ (entier): Le nombre maximum d'événements attendu dans une année (p. ex. 100);\\
+				$n$ (entier): nb de réalisations de la simulation (p. ex. $n=10^3$).
+			}
+			\Output{matrice de dimension $n\times \mathrm{card}(m)$ correspondant à des réalisations du processus $S^{(m)}_{T_0}(t)$.}
+			
+			\BlankLine
+			\ForEach{m}{
+				poser $T_{0} =$ \texttt{as.numeric}(\texttt{as.Date("$m$-04-01")});\;
+				poser $t_{\max} = T_{0} + t$;\; 
+				\BlankLine
+				\For{$j\gets1$ \KwTo $n$}{
+					\BlankLine
+					simuler $(u_{l}^{(X)}, u_{l}^{(W)}, u_{l}^{(D)}),\ l=1,\dots N_{\mathrm{max}}$, des réalisations de la copule $G$;\;
+					poser $i=0$;\;
+					\BlankLine
+					\Do{$T_{i} <= t_{\max}$}{
+						incrémenter $i=i+1$;\;
+						calculer $W_{i} = F_{W}^{-1}(u_{i}^{(W)} | T_{i-1})$, une réalisation de $W^{(m)}$ ;\;
+						calculer $T_{i} = T_{i-1} + W_{i}$, une réalisation de $T^{(m)}$;\;
+						calculer $D_{i} = F_{D}^{-1}(u_{i}^{(D)} | T_{i})$, une réalisation de $D^{(m)}$ ;\;
+						calculer $T_{i} = T_{i} + D_{i}$, une réalisation de $T^{\star (m)}$;\;
+					}
+					\BlankLine
+					calculer $N = i-1$, une réalisation de $N^{(m)}_{T_0}(t)$; \;
+					\BlankLine
+					\If{$N=0$}{
+						poser $V=0$; \;
+					\Else{
+						\For{$i\gets 1$ \KwTo $N$}{
+							calculer $X_{i} = u + F^{-1}_{X-u|X>u}(u_i^{(X)})$, une réalisation de $X^{(m)}$;\;
+						}
+						calculer $V$ = $\sum_{i=1}^{N} X_i$, une réalisation de $V^{(m)}_{T_0}(t)$;\;
+					}}
+					simuler $Z$, une réalisation de $Z^{(m)}$;\;
+					calculer $S_{j, m} = V + Z$, une réalisation de $S_{T_0}^{(m)}(t)$;\;
+				}
+			}
+		\Return S
+		\caption{Simuler un processus de renouvellement alterné avec récompense utilisant les copules pour modéliser la dépendance.}
+		\label{algo_Simul_process_St}
+		\end{algorithm}	
+		}
+
+	
+	
+	
+%	\begin{table}[ht]
+%		\centering
+%		\resizebox*{!}{\dimexpr\textheight-2\baselineskip\relax}{%
+%			\begin{tabular}{c|ccccccccccc}
+%				\toprule
+%				\backslashbox{$l$}{$m$} & 2003 & 2004 & 2005 & 2006 & 2007 & 2008 & 2009 & 2010 & 2011 & 2012 & 2013 \\ 
+%				\hline
+%				1 & - & - & - & - & - & - & - & 0.49 & - & 0.13 & - \\ 
+%				2 & - & - & 1.08 & 0.42 & - & - & - & - & 0.77 & 1.54 & - \\ 
+%				3 & - & - & - & 0.42 & 0.52 & - & - & - & 0.13 & - & - \\ 
+%				4 & 0.20 & - & - & 0.42 & 0.52 & - & - & 0.49 & - & 0.13 & 0.71 \\ 
+%				5 & - & - & - & 0.42 & 0.52 & - & - & - & - & 0.13 & 0.20 \\ 
+%				6 & 0.50 & - & - & 0.42 & - & - & 0.50 & - & - & 0.13 & - \\ 
+%				7 & - & - & - & 1.66 & - & - & - & - & - & - & - \\ 
+%				8 & - & - & 0.54 & - & - & - & 1.99 & 2.05 & 0.13 & - & 0.20 \\ 
+%				9 & 5.04 & - & - & - & - & - & 0.50 & 43.78 & - & - & - \\ 
+%				10 & - & - & 0.54 & 0.42 & - & 0.52 & - & 3.42 & - & 0.39 & 1.62 \\ 
+%				11 & - & - & 0.54 & - & 5.23 & - & 0.50 & 3.91 & 2.57 & - & 2.94 \\ 
+%				12 & - & - & 1.08 & 0.42 & 0.52 & - & 3.48 & - & 1.16 & 0.13 & - \\ 
+%				13 & 1.21 & - & 0.54 & 0.42 & - & - & 0.50 & - & - & 3.47 & 0.51 \\ 
+%				14 & - & - & 6.99 & 0.42 & - & - & - & 0.49 & - & 11.97 & - \\ 
+%				15 & 0.50 & 2.09 & 4.30 & - & - & 0.52 & - & 0.49 & - & 0.26 & 0.20 \\ 
+%				16 & - & - & - & 3.32 & - & - & - & 0.49 & - & - & - \\ 
+%				17 & - & - & 0.54 & 0.42 & - & - & 0.50 & 0.49 & - & 0.26 & - \\ 
+%				18 & - & - & - & - & 0.42 & - & 6.97 & 0.49 & - & - & - \\ 
+%				19 & - & 3.65 & 0.54 & - & 5.86 & - & 0.50 & 0.49 & - & - & 0.51 \\ 
+%				20 & - & - & - & 0.42 & 0.63 & 5.16 & - & - & - & - & 2.84 \\ 
+%				21 & - & 3.65 & - & 0.42 & - & 7.22 & 0.50 & - & - & - & - \\ 
+%				22 & - & 5.74 & 0.54 & - & - & 2.58 & 6.47 & 0.49 & - & - & - \\ 
+%				23 & 0.50 & - & - & 0.42 & - & - & 0.50 & 0.49 & 3.08 & - & 0.20 \\ 
+%				24 & 0.20 & 8.86 & - & 0.42 & 1.05 & 0.52 & 0.50 & 0.49 & 0.26 & 3.86 & - \\ 
+%				25 & 0.20 & - & - & 0.42 & 2.72 & 0.52 & - & - & - & 0.13 & 0.71 \\ 
+%				26 & 1.01 & - & - & 0.42 & 0.42 & - & 1.00 & 0.49 & - & 0.51 & 2.43 \\ 
+%				27 & 0.50 & - & - & - & - & - & - & - & - & 3.86 & 5.27 \\ 
+%				28 & - & - & - & 0.42 & 1.05 & - & - & - & - & - & 0.20 \\ 
+%				29 & - & - & - & - & 0.63 & 0.52 & 0.50 & 1.95 & - & - & - \\ 
+%				30 & - & - & 0.54 & 7.48 & - & - & - & 4.40 & - & - & 2.33 \\ 
+%				31 & - & - & - & 4.44 & - & 0.46 & - & 0.48 & - & - & - \\ 
+%				32 & 2.02 & 1.14 & - & 8.38 & 1.99 & - & - & 0.48 & - & - & - \\ 
+%				33 & 2.22 & 0.57 & - & 0.49 & 2.98 & 0.46 & - & 0.95 & 2.62 & - & - \\ 
+%				34 & - & 0.57 & - & - & 1.49 & - & - & - & 0.09 & - & - \\ 
+%				35 & 3.03 & - & 1.08 & - & 0.50 & 0.46 & - & - & 5.80 & - & 0.30 \\ 
+%				36 & 5.25 & - & - & - & - & - & 0.50 & 0.48 & 1.78 & - & - \\ 
+%				37 & 2.42 & 0.57 & - & - & - & - & - & 0.48 & 0.09 & - & 0.20 \\ 
+%				38 & 6.67 & 4.56 & - & - & - & - & 1.51 & 0.48 & - & - & 0.40 \\ 
+%				39 & - & - & - & 0.99 & - & - & 1.01 & 0.48 & - & 3.15 & - \\ 
+%				40 & - & - & - & - & 0.50 & - & 0.50 & 0.95 & - & 0.53 & 0.20 \\ 
+%				41 & - & - & - & 0.49 & - & - & - & 0.48 & - & - & - \\ 
+%				42 & - & - & 3.78 & - & 0.99 & 0.46 & 0.50 & 0.48 & - & - & 2.00 \\ 
+%				43 & - & - & - & 0.49 & - & - & 0.50 & 2.86 & - & - & 0.40 \\ 
+%				44 & 0.20 & 1.25 & - & - & - & - & - & 0.48 & - & - & 2.20 \\ 
+%				45 & - & - & - & - & - & 0.46 & - & 0.48 & - & - & - \\ 
+%				46 & 0.40 & 0.57 & - & - & - & - & 0.50 & 0.48 & - & - & - \\ 
+%				47 & 5.56 & - & 1.08 & - & - & - & - & 0.48 & - & 0.11 & - \\ 
+%				48 & 2.02 & - & 13.50 & - & - & - & - & - & - & 1.47 & - \\ 
+%				49 & - & - & 1.08 & - & 3.47 & - & 0.50 & 2.38 & - & 16.60 & - \\ 
+%				50 & 1.21 & 0.57 & 0.54 & 0.49 & 0.50 & - & 0.50 & 4.29 & - & 0.11 & - \\ 
+%				\bottomrule
+%		\end{tabular}}
+%		\caption{Observations de $Y_l^{(m)}$, pour $l=1,\dots,50$ et $m=2003,\dots,2013$, dans la base de données Clearwater River. Cette variable est représentée par la colonne \texttt{Precip. (mm)} et la période couvre du $1^{\mathrm{er}}$ avril au 20 mai, des années 2003 à 2013.}
+%		\label{tbl_exemple_illustrer_model}
+%	\end{table}
+
+	
+	
+		
 	
 \end{document}
