@@ -3,12 +3,18 @@ library(copula)     # Librairie générale pour travailler avec des copules.
 library(eva)        # Un autre papier plus récent sur la détermination du seuil.
 library(lubridate)  # Travailler efficacement avec les dates
 library(modifiedmk) # Version modifiée du test de Mann-Kenndall pour des données auto-corrélées.
+library(parallel)   # Permet de parréliser les simulations du modèle final.
 library(qrmtools)   # Donne accès aux fonctions dGPD, pGPD, qGPD et rGPD.
 library(threshr)    # Détermination du seuil de valeur extrême de façon automatique
 library(tidyverse)  # Package pour être efficace en data science.
 library(utils)      # Permet de faire des bars de progression.
 library(VineCopula) # Librairie efficace pour faire la sélection de copule.
-library(parallel)   # Permet de parréliser les simulations du modèle final.
+
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
 
 data_intigrity_assertions <- function(data) {
    #' Fonction qui vérifie que chacune des années de la base de données
@@ -168,7 +174,7 @@ preprocess_data <- function(data, NA.neighbour_days=2, C.separeting_days=1, n_pr
          summarise(
             prcp_agg = sum(PRCP),
             start_date = min(DATE),
-            duration = max(DATE) - min(DATE) + 1,
+            duration = as.numeric(max(DATE) - min(DATE) + 1),
             time_since_last = sum(time_since_last),
             .groups = 'drop'
          ) %>% select(-cluster)
@@ -220,38 +226,17 @@ fit_GPD <- function(x, method='bayesian') {
    #'         lois GPD.
    
    if (method == 'pwm') {
-      Fn <- ecdf(x)
-      M100 <- mean(x)
-      M101 <- mean(x * (1 - Fn(x)))
-      xi <- -(M100 - 4*M101) / (2*M101 - M100)
-      scale <- (1-xi) * M100
+      param <- fit_GPD_PWM(x)
+      xi <- param[1]
+      scale <- param[2]
    }
    else if (method == 'ml') {
-      nll <- function(param) {
-         -sum(log(dGPD(x, param[1], param[2])))
-      }
-      param <- optim(par = fit_GPD(x, 'pwm'), fn=nll)$par
+      param <- fit_GPD_MLE(x)
       xi <- param[1]
       scale <- param[2]
    }
    else if (method == 'mm') {
-      mean_x <- mean(x)
-      var_x <- var(x)
-      xi <- 0.5 * (1 - mean_x^2/var_x)
-      scale <- (1 - xi) * mean_x
-   }
-   else if (method == 'vwl') {
-      # N <- trunc(length(x) * 0.75)
-      
-      func_to_minimize <- function(param) {
-         N <- length(x)
-         qm <- qGPD((1:N) / N, param[1], param[2])  # Quantiles théoriques
-         xm <- sort(x)  # Quantiles empiriques
-         return(mean((xm - qm) ^ 2))
-      }
-      
-      param <- optim(par = fit_GPD(x, 'pwm'),
-                     func_to_minimize)
+      param <- fit_GPD_MOM(x)
       xi <- param[1]
       scale <- param[2]
    }
@@ -262,16 +247,136 @@ fit_GPD <- function(x, method='bayesian') {
    }
    else stop("The specified method is not implemented in this function.")
    
+   print(ks.test(x, pGPD, shape=xi, scale=scale))
+   print(ad.test(x, pGPD, shape=xi, scale=scale))
+   
    return(c(xi, scale))
 }
 
 
-fit_W <- function(data, show_qqplot=T) {
+fit_Z <- function(data, show_qqplot=T) {
+   #' Fonction qui paramétrise les précipitations normales selon une loi Gamma.
+   #' L'hypothèse de tendance est testée via le critère de l'AIC.
+   #' 
+   #' @param data (tibble): Les données contenant les précipitations
+   #'        non-extrêmes totales pour chacune des saisons printanières. Les
+   #'        colonnes de ce dataFrame doivent être "total_prcp" et "year."
+   #' @param show_qqplot (bool): Est-ce qu'on affiche le qqplot lors de 
+   #'        l'exécution de la fonction ?
+   #' 
+   #' @return (list): La fonction quantile, la fonction de densité et la 
+   #'        fonction de répartition de la loi paramétrée selon le maximum de 
+   #'        vraisemblance.
+   Z <- data$total_prcp
+   years <- data$year
+   
+   cat("Mann-Kendall's test:", fill=T)
+   print(MannKendall(Z))
+
+   nll_gamma <- function(param, trend) {
+      if (trend) {
+         rate <- function(.year) {
+            param[1] / (param[2] + param[3] * .year)
+         }
+      } else {
+         rate <- function(.year) {
+            param[1] / param[2]
+         }
+      }
+      - sum(log(dgamma(Z, param[1], rate(years))))
+   }
+   
+   nll_normal <- function(param, trend) {
+      if (trend) {
+         mu <- function(.year) {
+            (param[2] + param[3] * .year)
+         }
+      } else {
+         mu <- function(.year) {
+             param[2]
+         }
+      }
+      - sum(log(dnorm(Z, mu(years), param[1])))
+   }
+   
+   sd_Z <- sd(Z)
+   mean_Z <- mean(Z)
+   shape <- mean_Z^2 / var(Z)
+   
+   optimizations <- list(
+      Z_optim_gamma_trend <- optim(c(shape, mean_Z, 0), nll_gamma, gr=NULL, trend=T),
+      Z_optim_normal_trend <- optim(c(sd_Z, mean_Z, 0), nll_normal, gr=NULL, trend=T),
+      Z_optim_gamma_notrend <- optim(c(shape, mean_Z), nll_gamma, gr=NULL, trend=F),
+      Z_optim_normal_notrend <- optim(c(sd_Z, mean_Z), nll_normal, gr=NULL, trend=F)
+   )
+   best <- which.min(c(
+      aic_gamma_trend = 2 * (3 + Z_optim_gamma_trend$value),
+      aic_normal_trend = 2 * (3 + Z_optim_normal_trend$value),
+      aic_gamma_notrend = 2 * (2 + Z_optim_gamma_notrend$value),
+      aic_normal_notrend = 2 * (2 + Z_optim_normal_notrend$value)
+   ))
+   best_par <- optimizations[[best]]$par
+   best_dist <- c("gamma", "normal", "gamma", "normal")[best]
+   
+   trend <- if (best < 3) "with trend" else "whitout trend"
+   cat("\nBest distribution:", best_dist, trend, fill=T)
+   cat("Parameters:", best_par, fill=T)
+   
+   if (best_dist=='normal') {
+      Z_sd <- best_par[1]
+      
+      mu <- function(.year) {
+         if (length(best_par) == 3){
+            return(best_par[2] + best_par[3] * .year)
+         }
+         return(best_par[2])
+      }
+      
+      pZ <- function(z, .year) pnorm(z, mu(.year), Z_sd)
+      dZ <- function(z, .year) dnorm(z, mu(.year), Z_sd)
+      qZ <- function(p, .year) qnorm(p, mu(.year), Z_sd)
+      
+      if (show_qqplot) {
+         car::qqPlot(Z, 'norm', mean=mu(.year), sd=Z_sd, lwd=0.5, id=F)
+         abline(0, 1, col = 'red')
+      }
+      
+   } else {
+      shape <- best_par[1]
+      
+      rate <- function(.year) {
+         if (length(best_par) == 3){
+            return(shape / (best_par[2] + best_par[3] * .year))
+         }
+         return(shape / best_par[2])
+      }
+      
+      pZ <- function(z, .year) pgamma(z, shape, rate(.year))
+      dZ <- function(z, .year) dgamma(z, shape, rate(.year))
+      qZ <- function(p, .year) qgamma(p, shape, rate(.year))
+      
+      if (show_qqplot) {
+         car::qqPlot(Z, 'gamma', shape=shape, rate=rate(years),
+                     ylab='Empirical quantiles', lwd=0.5, id=F)
+         abline(0, 1, col = 'red')
+      }
+   }
+   
+   print(ks.test(Z, pZ, .year=years))
+   print(ad.test(Z, pZ, .year=years))
+   
+   return(list(
+      "quantiles"=qZ, "density"=dZ, "cdf"=pZ
+   ))
+}
+
+
+fit_W <- function(data, heavy_tailed=F) {
    #' Fonction qui paramétrise la loi des temps inter-occurences des périodes 
    #' de pluies extrêmes selon l'une des trois distributions suivantes:
-   #'  - La loi exponentielle
-   #'  - La loi Weibull
-   #'  - La loi Gamma
+   #'  - La loi Géométrique
+   #'  - La loi Binomiale négative
+   #'  - Weibull discrétisée
    #' 
    #' @param data (tibble): Base de données tibble contenant les variables 
    #'        suivantes:
@@ -281,8 +386,8 @@ fit_W <- function(data, show_qqplot=T) {
    #'        extrêmes.
    #'        - Duration (int): La durée des périodes de pluies extrêmes en
    #'        nombre de jours.
-   #' @param show_qqplot (bool) : Est-ce que l'on désire afficher les qqplots 
-   #'        pour valider l'adéquation de la loi paramétrée.
+   #' @param heavy_tailed (bool): Est-ce que la distribution présente une queue
+   #'        très lourde ? Dans l'affirmative, une loi GP sera paramétrée.
    #'        
    #' @return Une liste:
    #'        - density (func): Fonction de densité de probabilités paramétrée.
@@ -292,208 +397,322 @@ fit_W <- function(data, show_qqplot=T) {
    #'        Les paramètres utilisés pour ces deux fonctions sont:
    #'        - w (float): Les temps inter-occurences d'événements extrêmes.
    #'        - t0 (Date ou int): Date du début
-
-   data_time <- data %>% select(W, start_date, duration)
+   
+   data_time <- data.extremes %>% select(W, start_date, t0, duration)
    W <- data_time$W %>% unlist(use.names = F)
-   t0 <- data_time$start_date + data_time$duration %>% unlist(use.names = F)
-   years <- data_time$start_date %>% year() %>% unlist(use.names = F)
    n <- length(W)
-
+   
+   t0 <- (data_time$t0 + data_time$duration) %>% as.numeric()
+   max_t0 <- max(t0)
+   t0 <- t0 / max_t0
+   
    residual_times <- function(data_time) {
       t <- data_time$start_date %>% year() %>% unlist(use.names = F)
       min_year <- min(t)
       n_years <- max(t) - min_year + 1
       res <- numeric(n_years)
-      t0 <- numeric(n_years)
+      .t0 <- numeric(n_years)
       for (i in 1:n_years) {
-         y <- min_year + i - 1
-         annual_times <- data_time %>% filter(year(start_date) == y)
-         t0[i] <- as.Date(paste0(as.character(y), '-04-01'))
+         m <- min_year + i - 1
+         annual_times <- data_time %>% filter(year(start_date) == m)
+         .t0[i] <- as.Date(paste0(as.character(m), '-04-01'))
          cum_time <- sum(annual_times$W, annual_times$duration)
-         t0[i] <- t0[i] + cum_time
+         .t0[i] <- .t0[i] + cum_time
          res[i] <- 91 - cum_time
       }
-      return(list("res"=res, "t0"=t0, 'years'=seq(min_year, max(t), by=1)))
+      .t0 <- (.t0 - min(.t0)) / max_t0
+      return(list("res"=res, "t0"=.t0, 'years'=seq(min_year, max(t), by=1)))
    }
    res <- residual_times(data_time)
    
-   mktest <- MannKendall(W)$sl[1]
-   cat("Mann-Kendall's p-value:", mktest, fill = T)
+   cat("Mann-Kendall's test:", fill=T)
+   print(MannKendall(W))
    
-   if (mktest <= 0.05) {
+   geom_nll <- function(param, trend) {
       
-      mu <- function(t, s, param) {
-         a <- param[1]
-         b <- param[2]
-         s <- as.numeric(s)
-         (a + b * s) * t + 0.5 * b * t ^ 2
-      }
-      mu_inv <- function(u, s, param) {
-         a <- param[1]
-         b <- param[2]
-         s <- as.numeric(s)
-         (-(a+b*s) + sqrt((a+b*s)^2 + 2*b*u)) / b
-      }
-      
-      dexp_ns <- function(t, s, param) {
-         a <- param[1]
-         b <- param[2]
-         dmu <- function(t,s) {
-            s <- as.numeric(s)
-            a + b * (s + t)
+      mu <- function(.t0) {
+         if (trend) {
+            return(param[1] + param[2] * as.numeric(.t0))
          }
-         exp(-mu(t, s, param)) * dmu(t, s)
-      }
-      exp_nll <- function(param) {
-         nll <- -sum(log(dexp_ns(W, t0, param)))
-         nll <- nll - sum(log(exp(-mu(res$res, res$t0, param))))
-         return(nll)
+         return(param[1])
       }
       
-      gamma_nll <- function(param) {
-         shape <- param[1]
-         
-         rate <- function(.year) {
-            shape / (param[2] + param[3] * as.numeric(.year))
-         }
-         nll <- -sum(log(dgamma(W, shape, rate(years))))
-         nll <- nll - sum(log(1-pgamma(res$res, shape, rate(res$years))))
-         
-         return(nll)
-      }
-      
-      weibull_nll <- function(param) {
-         shape <- param[1]
-         
-         scale <- function(.year) {
-            (param[2] + param[3] * as.numeric(.year)) / gamma(1 + 1 / shape)
-         }
-         nll <- -sum(log(dweibull(W, shape, scale(years))))
-         nll <- nll - sum(log(1-pweibull(res$res, shape, scale(res$years))))
-         return(nll)
-      }
-      
-      
-      optim_exp <- optim(c(1 / mean(W), 0), exp_nll)
-      optim_gamma <- optim(c(1, mean(W), 0), gamma_nll)
-      optim_weibull <- optim(c(1, mean(W), 0), weibull_nll)
-      
-      aic_exp <- 2 * (2 + optim_exp$value)
-      aic_gamma <-  2 * (3 + optim_gamma$value)
-      aic_weibull <-  2 * (3 + optim_weibull$value)
-      
-   } 
-   else {
-      
-      exp_nll <- function(param) {
-         nll <- -sum(log(dexp(W, t0, param)))
-         nll <- nll - sum(log(1 - pexp(res$res, res$t0, param)))
-         return(nll)
-      }
-      
-      gamma_nll <- function(param) {
-         nll <- -sum(log(dgamma(W, param[1], param[2])))
-         nll <- nll - sum(log(1 - pgamma(res$res, res$t0, param)))
-         return(nll)
-      }
-      
-      weibull_nll <- function(param) {
-         nll <- -sum(log(dweibull(W, param[1], param[2])))
-         nll <- nll - sum(log(1 - pweibull(res$res, res$t0, param)))
-         return(nll)
-      }
-      
-      optim_exp <- list()
-      optim_exp$par <- 1 / mean(duration)
-      optim_exp$value <- exp_nll(optim_exp$par)
-      
-      optim_gamma <- optim(c(1, optim_exp$par), gamma_nll)
-      optim_weibull <- optim(c(1, 1 / optim_exp$par), weibull_nll)
-      
-      aic_exp <- 2 * (1 + optim_exp$value)
-      aic_gamma <-  2 * (2 + optim_gamma$value)
-      aic_weibull <-  2 * (2 + optim_weibull$value)
-   }
-
-   best <- which.min(c(aic_exp, aic_gamma, aic_weibull))
-   cat('\n')
-   print(cbind(aic_exp, aic_gamma, aic_weibull))
-   cat('\n')
-
-   distributions <- c("exp", "gamma", "weibull")
-   params <- list(optim_exp$par,
-                  optim_gamma$par,
-                  optim_weibull$par)
-
-   best_distribution <- distributions[best]
-   best_param <- params[[best]] %>% unlist()
-
-   cat("best distribution:", best_distribution, ', ')
-   cat("Parameters:", best_param, fill = T)
-   
-   if (best_distribution == 'exp') {
-      if (mktest <= 0.05) {
-         dW <- function(w, t0) dexp_ns(w, t0, best_param)
-         pW <- function(w, t0) 1 - exp(-mu(w, t0, best_param))
-         qW <- function(u, t0) mu_inv(qexp(u), t0, best_param)
-      } else {
-         dW <- function(w, t0) dexp(w, best_param[1], best_param[2])
-         pW <- function(w, t0) pexp(w, best_param[1], best_param[2])
-         qW <- function(u, t0) qexp(u, best_param[1], best_param[2])
-      }
-      
-   } else if (best_distribution == 'gamma') {
-      if (mktest <= 0.05) {
-         shape <- best_param[1]
-         rate <- function(t0) {
-            .year <- year(t0)
-            shape / (best_param[2] + best_param[3] * .year)
-         }
-         dW <- function(w, t0) dgamma(w, shape, rate(t0))
-         pW <- function(w, t0) pgamma(w, shape, rate(t0))
-         qW <- function(u, t0) qgamma(u, shape, rate(t0))
-      } else {
-         dW <- function(w, t0) dgamma(w, best_param[1], best_param[2])
-         pW <- function(w, t0) pgamma(w, best_param[1], best_param[2])
-         qW <- function(u, t0) qgamma(u, best_param[1], best_param[2])
-      }
-      
-   } else { # Weibull
-      if (mktest <= 0.05) {
-         shape <- best_param[1]
-         
-         scale <- function(t0) {
-            .year <- year(t0)
-            (best_param[2] + best_param[3] * .year) / gamma(1 + 1/shape)
-         }
-         dW <- function(w, t0) dweibull(w, shape, scale(t0))
-         pW <- function(w, t0) pweibull(w, shape, scale(t0))
-         qW <- function(u, t0) qweibull(u, shape, scale(t0))
-      } else {
-         dW <- function(w, t0) dweibull(w, best_param[1], best_param[2])
-         pW <- function(w, t0) pweibull(w, best_param[1], best_param[2])
-         qW <- function(u, t0) qweibull(u, best_param[1], best_param[2])
-      }
+      nll <- -sum(log(dgeom(W, 1 / mu(t0))))
+      nll <- nll - sum(log(1 - pgeom(res$res, 1 / mu(res$t0))))
+      return(nll)
    }
    
-   if (show_qqplot) {
-      p <- pW(91, t0)
-      qqplot(W, qW(p * ecdf(W)(W), t0),
-             xlab = 'Empirical observations',
-             ylab = 'Theorical quantiles')
-      abline(0, 1, col = 'blue')
+   nbin_nll <- function(param, trend) {
+      shape <- param[1]
+      
+      mu <- function(.t0) {
+         if (trend) {
+            return(param[2] + param[3] * as.numeric(.t0))
+         }
+         return(param[2])
+      }
+      
+      nll <- -sum(log(dnbinom(W, shape, mu=mu(t0))))
+      nll <- nll - sum(log(1 - pnbinom(res$res, shape, mu=mu(res$t0))))
+      return(nll)
+   }
+   
+   weibull_nll <- function(param, trend) {
+      shape <- param[1]
+      
+      scale <- function(.t0) {
+         if (trend) {
+            return(exp(param[2] + param[3] * as.numeric(.t0)) / gamma(1 + 1 / shape))
+         }
+         return(param[2] / gamma(1 + 1 / shape))
+      }
+      
+      cdf <- function(w, scales) {
+         mapply(pweibull, q=w, scale=scales, shape=shape)
+      }
+      
+      pmf <- function(w, scales) {
+         f <- function(.w, .sig) {
+            pweibull(.w+1, shape, .sig) - pweibull(.w, shape, .sig)
+         }
+         mapply(f, w, scales)
+      }
+      
+      if (min(shape, scale(t0)) <= 0) return(NA)
+      nll <- -sum(log(pmf(W, scale(t0))))
+      nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
+      return(nll)
+   }
+   
+   pareto_nll <- function(param, trend) {
+      shape <- param[1]
+      if (trend) {
+         scale <- function(.t) {
+            return(exp(param[2] + param[3] * as.numeric(.t)))
+         }
+      } else {
+         scale <- function(.t) param[2]
+      }
+      
+      cdf <- function(w, scales) {
+         mapply(pPar, q=w, scale=scales, shape=shape)
+      }
+      
+      pmf <- function(w, scales) {
+         f <- function(.w, .sig) {
+            if (.w == 0) return(0)
+            pPar(.w+1, shape, .sig) - pPar(.w, shape, .sig)
+         }
+         mapply(f, w, scales)
+      }
+      
+      if (min(shape, scale(t0)) <= 0) return(0)
+      
+      nll <- -sum(log(pmf(W, scale(t0))))
+      nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
+      return(nll)
+   }
+
+   if(heavy_tailed) {
+      
+      fit_W_pareto <- function(init_par, trend, quiet=T, seed=2021) {
+         require(MHadaptive)
+         
+         prior_reg <- function(param, trend) {
+            
+            prior_shape <- dgamma(param[1], 3, 1, log = T)
+            
+            if (trend) {
+               prior_a <- dnorm(param[2], init_par[2], 2, log=T)
+               prior_b <- dnorm(param[3], 0, 1, log=T)
+               prior_scale <- prior_a + prior_b
+            } else {
+               prior_scale <- dgamma(param[2], 15, 1/5, log=T)
+            }
+            return(prior_shape + prior_scale)
+         }
+         
+         li_func <- function(param, trend) {
+            return(prior_reg(param, trend) - pareto_nll(param, trend))
+         }
+         
+         if (trend) {
+            par_names <- c('shape', 'a', 'b')
+         } else {
+            par_names <- c('shape', 'scale')
+         }
+         
+         set.seed(seed)
+         mcmc_r <- Metro_Hastings(
+            li_func = li_func,
+            pars = init_par,
+            par_names = par_names,
+            iterations = 5e+4,
+            burn_in = 1e+4,
+            quiet=T,
+            trend=trend
+         )
+         init_par <- apply(mcmc_r$trace, 2, getmode)
+         cat("prelim_pars:", init_par, fill=T)
+         
+         mcmc_r <- Metro_Hastings(
+            li_func = li_func,
+            pars = init_par,
+            prop_sigma = mcmc_r$prop_sigma,
+            par_names = par_names,
+            iterations = 5e+4,
+            burn_in = 1e+4,
+            quiet=T,
+            trend=trend
+         )
+         par <- apply(mcmc_r$trace, 2, getmode)
+         names(par) <- par_names
+         value <- pareto_nll(par, trend)
+         cat('Pareto, Trend=', trend, ', value:', value, fill=T)
+         cat('parameters', par, fill=T)
+         return(list(
+            "par" = par,
+            "value" = value
+         ))
+         
+         unloadNamespace("MHadaptive")
+         unloadNamespace("MASS")
+      }
+      
+      # No trend
+      init_par <- c(2, mean(W))
+      cat("Pareto initial parameters:", init_par, fill=T)
+      pareto_notrend <- fit_W_pareto(init_par = init_par, trend=F)
+      
+      # With trend
+      init_par <- pareto_notrend$par
+      pareto_trend <- fit_W_pareto(
+         init_par = c(init_par[1], log(init_par[2]), 0),
+         trend=T)
+      
+   } else {
+      pareto_notrend <- list(par = NA, value = NA)
+      pareto_trend <- list(par = NA, value = NA)
+   }
+
+   optimizations <- list(
+      # With trend
+      optim_geom_trend <- optim(c(mean(W), 0), geom_nll, gr=NULL, trend=T),
+      optim_nbin_trend <- optim(c(1, mean(W), 0), nbin_nll, gr=NULL, trend=T),
+      optim_weib_trend <- optim(c(1, log(mean(W)), 0), weibull_nll, gr=NULL, trend=T),
+      pareto_trend,
+      # Without trend
+      optim_geom_notrend <- list(
+         "par" = mean(W),
+         "value" = geom_nll(mean(W), trend=F)),
+      optim_nbin_notrend <- optim(c(1, mean(W)), nbin_nll, gr=NULL, trend=F),
+      optim_weib_notrend <- optim(c(1, mean(W)), weibull_nll, gr=NULL, trend=F),
+      pareto_notrend
+   )
+   
+   aics <- cbind(
+      # With trend
+      aic_geom_trend = 2 * (2 + optim_geom_trend$value),
+      aic_nbin_trend = 2 * (3 + optim_nbin_trend$value),
+      aic_weib_trend = 2 * (3 + optim_weib_trend$value),
+      aic_pare_trend  = 2 * (3 + pareto_trend$value),
+      # Without trend
+      aic_geom_notrend = 2 * (1 + optim_geom_notrend$value),
+      aic_nbin_notrend = 2 * (2 + optim_nbin_notrend$value),
+      aic_weib_notrend = 2 * (2 + optim_weib_notrend$value),
+      aic_pare_notrend  = 2 * (2 + pareto_notrend$value)
+   )
+   best <- which.min(aics)
+   print(aics)
+   
+   best_par <- optimizations[[best]]$par
+   best_dist <- rep(
+      c('geometric', 'Negative binomial', 'Weibull', "Pareto"), 2)[best]
+   
+   trend <- if (best < 5) "with trend" else "whitout trend"
+   cat("\nBest distribution:", best_dist, trend, fill=T)
+   cat("Parameters:", best_par, fill=T)
+   
+   if (best_dist=='geometric') {
+      
+      mu <- function(.t0) {
+         if (length(best_par) == 2){
+            return(best_par[1] + best_par[2] / max_t0 * as.numeric(.t0))
+         }
+         return(best_par[1])
+      }
+      
+      pW <- function(w, t0) pgeom(w, 1 / mu(t0))
+      dW <- function(w, t0) dgeom(w, 1 / mu(t0))
+      qW <- function(p, t0) qgeom(p, 1 / mu(t0))
+      
+   } else if (best_dist=='Negative binomial') {
+      shape <- best_par[1]
+      
+      mu <- function(.t0) {
+         if (length(best_par) == 3){
+            return(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0))
+         }
+         return(best_par[2])
+      }
+      
+      pW <- function(w, t0) pnbinom(w, shape, mu=mu(t0))
+      dW <- function(w, t0) dnbinom(w, shape, mu=mu(t0))
+      qW <- function(p, t0) qnbinom(p, shape, mu=mu(t0))
+      
+   } else if (best_dist=='Weibull') {
+      shape <- best_par[1]
+      
+      scale <- function(.t0) {
+         if (length(best_par) == 3) {
+            return(exp(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0)) / gamma(1 + 1 / shape))
+         }
+         return(best_par[2] / gamma(1 + 1 / shape))
+      }
+      
+      pW <- function(w, t0) pweibull(w, shape, scale(t0))
+      qW <- function(p, t0) ceiling(qweibull(p, shape, scale(t0)))
+      dW <- function(w, t0) {
+         sapply(w, function(.w) {
+            if (.w == 0) 0
+            else pD(.w, t0) - pD(.w - 1, t0) 
+            })
+      }
+      
+   } else { # best_dist=='Pareto'
+      
+      if (length(best_par) == 3) {
+         shape <- best_par["Shape (Intercept)"]
+         scale <- function(.t) {
+            a <- best_par["Scale (Intercept)"]
+            b <- best_par["Scale time"]
+            return(a + b / max_t0 * as.numeric(.t))
+         }
+      } else {
+         shape <- best_par['shape']
+         scale <- function(.t) best_par['scale']
+      }
+      
+      pW <- function(w, t0) pPar(w, shape, scale(t0))
+      qW <- function(p, t0) ceiling(qPar(p, shape, scale(t0)))
+      dW <- function(w, t0) {
+         sapply(w, function(.w) {
+            if (.w == 0) 0
+            else pD(.w, t0) - pD(.w - 1, t0) 
+         })
+      }
    }
    
    return(list(
       "density" = dW,
       "distribution" = pW,
       "quantiles" = qW,
-      'params' = best_param
+      'params' = best_par
    ))
 }
 
 
-fit_duration <- function(data, show_qqplot=T) {
+fit_D <- function(data) {
    #' Fonction qui paramétrise la loi de la durée des périodes 
    #' de pluies extrêmes selon l'une des trois distributions suivantes:
    #'  - La loi exponentielle
@@ -508,8 +727,6 @@ fit_duration <- function(data, show_qqplot=T) {
    #'        extrêmes.
    #'        - Duration (int): La durée des périodes de pluies extrêmes en
    #'        nombre de jours.
-   #' @param show_qqplot (bool) : Est-ce que l'on désire afficher les qqplots 
-   #'        pour valider l'adéquation de la loi paramétrée.
    #'        
    #' @return Une liste:
    #'        - density (func): Fonction de densité de probabilités paramétrée.
@@ -520,190 +737,181 @@ fit_duration <- function(data, show_qqplot=T) {
    #'        - x (float): La durée des événements extrêmes.
    #'        - t0 (Date ou int): Date du début
 
-   data_time <- data %>% select(W, start_date, duration)
-   duration <- data_time$duration %>% as.numeric() %>% unlist(use.names = F)
-   t0 <- data_time$start_date %>% unlist(use.names = F)
-   years <- data_time$start_date %>% year() %>% unlist(use.names = F)
+   data_time <- data.extremes %>% select(W, start_date, duration, t0)
+   D <- data_time$duration %>% as.numeric() %>% unlist(use.names = F)
+   t0 <- data_time$t0
+   max_t0 <- max(t0)
+   t0 <- t0 / max_t0
 
-   mktest <- MannKendall(duration)$sl[1]
-   cat("Mann-Kendall's p-value:", mktest, fill = T)
+   cat("Mann-Kendall's test:", fill=T)
+   print(MannKendall(D))
    
-   if (mktest <= 0.05) {
+   geom_nll <- function(param, trend) {
       
-      mu <- function(t, s, param) {
-         a <- param[1]
-         b <- param[2]
-         s <- as.numeric(s)
-         (a + b * s) * t + 0.5 * b * t ^ 2
-      }
-      mu_inv <- function(u, s, param) {
-         a <- param[1]
-         b <- param[2]
-         s <- as.numeric(s)
-         (-(a+b*s) + sqrt((a+b*s)^2 + 2*b*u)) / b
-      }
-      
-      dexp_ns <- function(t, s, param) {
-         a <- param[1]
-         b <- param[2]
-         dmu <- function(t,s) {
-            s <- as.numeric(s)
-            a + b * (s + t)
+      mu <- function(.t0) {
+         if (trend) {
+            return(exp(param[1] + param[2] * as.numeric(.t0)))
          }
-         exp(-mu(t, s, param)) * dmu(t, s)
-      }
-      exp_nll <- function(param) {
-         nll <- -sum(log(dexp_ns(duration, t0, param)))
-         return(nll)
-      }
-      exp_nll2 <- function(param) {
-         mu2 <- function(.year) {
-            (param[1] + param[2] * as.numeric(.year))
-         }
-         nll <- -sum(log(dexp(duration, 1/mu2(years))))
-         return(nll)
+         return(param[1])
       }
       
-      gamma_nll <- function(param) {
-         shape <- param[1]
-         
-         rate <- function(.year) {
-            shape / (param[2] + param[3] * as.numeric(.year))
-         }
-         nll <- -sum(log(dgamma(duration, shape, rate(years))))
-         return(nll)
-      }
-      
-      weibull_nll <- function(param) {
-         shape <- param[1]
-         
-         scale <- function(.year) {
-            (param[2] + param[3] * as.numeric(.year)) / gamma(1 + 1 / shape)
-         }
-         nll <- -sum(log(dweibull(duration, shape, scale(years))))
-         return(nll)
-      }
-      
-      
-      optim_exp <- optim(c(1/mean(duration), 0), exp_nll)
-      optim_exp2 <- optim(c(mean(duration), 0), exp_nll2)
-      optim_gamma <- optim(c(1, mean(duration), 0), gamma_nll)
-      optim_weibull <- optim(c(1, mean(duration), 0), weibull_nll)
-      
-      aic_exp <- 2 * (2 + optim_exp$value)
-      aic_exp2 <- 2 * (2 + optim_exp2$value)
-      aic_gamma <-  2 * (3 + optim_gamma$value)
-      aic_weibull <-  2 * (3 + optim_weibull$value)
-      
-   } 
-   else {
-      
-      exp_nll <- function(param) {
-         nll <- -sum(log(dexp(duration, param)))
-         return(nll)
-      }
-      
-      gamma_nll <- function(param) {
-         nll <- -sum(log(dgamma(duration, param[1], param[2])))
-         return(nll)
-      }
-      
-      weibull_nll <- function(param) {
-         nll <- -sum(log(dweibull(duration, param[1], param[2])))
-         return(nll)
-      }
-      
-      optim_exp <- list()
-      optim_exp$par <- 1 / mean(duration)
-      optim_exp$value <- exp_nll(optim_exp$par)
-      optim_exp2 <- list("par"=0, "value"=1e+10)
-      
-      optim_gamma <- optim(c(1, optim_exp$par), gamma_nll)
-      optim_weibull <- optim(c(1, 1 / optim_exp$par), weibull_nll)
-      
-      aic_exp <- 2 * (1 + optim_exp$value)
-      aic_exp2 <- 2 * (1 + optim_exp2$value)
-      aic_gamma <-  2 * (2 + optim_gamma$value)
-      aic_weibull <-  2 * (2 + optim_weibull$value)
+      nll <- -sum(log(dgeom(D, 1 / mu(t0))))
+      return(nll)
    }
    
-   best <- which.min(c(aic_exp, aic_exp2, aic_gamma, aic_weibull))
-   cat('\n')
-   print(cbind(aic_exp, aic_exp2, aic_gamma, aic_weibull))
-   cat('\n')
-   
-   distributions <- c("exp", "exp", "gamma", "weibull")
-   params <- list(optim_exp$par,
-                  optim_exp2$par,
-                  optim_gamma$par,
-                  optim_weibull$par)
-   
-   best_distribution <- distributions[best]
-   best_param <- params[[best]] %>% unlist()
-   
-   cat("best distribution:", best_distribution, ', ')
-   cat("Parameters:", best_param, fill = T)
-   
-   if (best_distribution == 'exp') {
-      if (mktest <= 0.05) {
-         dD <- function(d, t0) dexp_ns(d, t0, best_param)
-         pD <- function(d, t0) 1 - exp(-mu(d, t0, best_param))
-         qD <- function(u, t0) mu_inv(qexp(u), t0, best_param)
-      } else {
-         dD <- function(d, t0) dexp(d, best_param[1], best_param[2])
-         pD <- function(d, t0) pexp(d, best_param[1], best_param[2])
-         qD <- function(u, t0) qexp(u, best_param[1], best_param[2])
+   nbin_nll <- function(param, trend) {
+      shape <- param[1]
+      
+      mu <- function(.t0) {
+         if (trend) {
+            return(exp(param[2] + param[3] * as.numeric(.t0)))
+         }
+         return(param[2])
       }
       
-   } 
-   else if (best_distribution == 'gamma') {
-      if (mktest <= 0.05) {
-         shape <- best_param[1]
-         rate <- function(t0) {
-            .year <- year(t0)
-            shape / (best_param[2] + best_param[3] * .year)
+      nll <- -sum(log(dnbinom(D, shape, mu=mu(t0))))
+      return(nll)
+   }
+   
+   pois_nll <- function(param, trend) {
+      mu <- function(.t0) {
+         if (trend) {
+            return(exp(param[1] + param[2] * as.numeric(.t0)))
          }
-         dD <- function(d, t0) dgamma(d, shape, rate(t0))
-         pD <- function(d, t0) pgamma(d, shape, rate(t0))
-         qD <- function(u, t0) qgamma(u, shape, rate(t0))
-      } 
-      else {
-         dD <- function(d, t0) dgamma(d, best_param[1], best_param[2])
-         pD <- function(d, t0) pgamma(d, best_param[1], best_param[2])
-         qD <- function(u, t0) qgamma(u, best_param[1], best_param[2])
+         return(param[1])
       }
       
-   } 
-   else { # Weibull
-      if (mktest <= 0.05) {
-         shape <- best_param[1]
-         
-         scale <- function(t0) {
-            .year <- year(t0)
-            (best_param[2] + best_param[3] * .year) / gamma(1 + 1/shape)
+      nll <- -sum(log(dpois(D, mu(t0))))
+      return(nll)
+   }
+   
+   weibull_nll <- function(param, trend) {
+      shape <- param[1]
+      
+      scale <- function(.t0) {
+         if (trend) {
+            return(exp(param[2] + param[3] * as.numeric(.t0)) / gamma(1 + 1 / shape))
          }
-         dD <- function(d, t0) dweibull(d, shape, scale(t0))
-         pD <- function(d, t0) pweibull(d, shape, scale(t0))
-         qD <- function(u, t0) qweibull(u, shape, scale(t0))
-      } else {
-         dD <- function(d, t0) dweibull(d, best_param[1], best_param[2])
-         pD <- function(d, t0) pweibull(d, best_param[1], best_param[2])
-         qD <- function(u, t0) qweibull(u, best_param[1], best_param[2])
+         return(param[2] / gamma(1 + 1 / shape))
+      }
+      
+      pmf <- function(d, scales) {
+         f <- function(.d, .sig) {
+            if (.d == 0) return(0)
+            pweibull(.d, shape, .sig) - pweibull(.d-1, shape, .sig)
+         }
+         mapply(f, d, scales)
+      }
+      
+      if (min(shape, scale(t0)) <= 0) return(NA)
+      nll <- -sum(log(dweibull(D, shape, scale(t0))))
+      return(nll)
+   }
+   
+   optimizations <- list(   
+      # With trend
+      optim_geom_trend <- optim(c(log(mean(D)), 0), geom_nll, gr=NULL, trend=T),
+      optim_nbin_trend <- optim(c(1, log(mean(D)), 0), nbin_nll, gr=NULL, trend=T),
+      optim_pois_trend <- optim(c(log(mean(D)), 0), pois_nll, gr=NULL, trend=T),
+      optim_weib_trend <- optim(c(1, log(mean(D)), 0), weibull_nll, gr=NULL, trend=T),
+      # Without trend
+      optim_geom_notrend <- list(
+         "par" = mean(D),
+         "value" = geom_nll(mean(D), trend=F)),
+      optim_nbin_notrend <- optim(c(1, mean(D)), nbin_nll, gr=NULL, trend=F),
+      optim_pois_notrend <- list(
+         "par" = mean(D),
+         "value" = pois_nll(mean(D), trend=F)),
+      optim_weib_notrend <- optim(c(1, mean(D)), weibull_nll, gr=NULL, trend=F)
+   )
+   
+   aics <- cbind(
+      # With trend
+      aic_geom_trend = 2 * (2 + optim_geom_trend$value),
+      aic_nbin_trend = 2 * (3 + optim_nbin_trend$value),
+      aic_pois_trend = 2 * (2 + optim_pois_trend$value),
+      aic_weib_trend = 2 * (3 + optim_weib_trend$value),
+      # Without trend
+      aic_geom_notrend = 2 * (1 + optim_geom_notrend$value),
+      aic_nbin_notrend = 2 * (2 + optim_nbin_notrend$value),
+      aic_pois_notrend = 2 * (1 + optim_pois_notrend$value),
+      aic_weib_notrend = 2 * (2 + optim_weib_notrend$value)
+   )
+   print(aics)
+   best <- which.min(aics)
+
+   best_par <- optimizations[[best]]$par
+   best_dist <- rep(
+      c('geometric', 'Negative binomial', 'Poisson', 'Weibull'), 2)[best]
+   
+   trend <- if (best < 5) "with trend" else "whitout trend"
+   cat("\nBest distribution:", best_dist, trend, fill=T)
+   cat("Parameters:", best_par, fill=T)
+   
+   if (best_dist=='geometric') {
+      
+      mu <- function(.t0) {
+         if (length(best_par) == 2){
+            return(exp(best_par[1] + best_par[2] / max_t0 * as.numeric(.t0)))
+         }
+         return(best_par[1])
+      }
+      
+      pD <- function(d, t0) pgeom(d, 1 / mu(t0))
+      dD <- function(d, t0) dgeom(d, 1 / mu(t0))
+      qD <- function(p, t0) qgeom(p, 1 / mu(t0))
+      
+   } else if (best_dist=='Negative binomial') {
+      shape <- best_par[1]
+      
+      mu <- function(.t0) {
+         if (length(best_par) == 3){
+            return(exp(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0)))
+         }
+         return(best_par[2])
+      }
+      
+      pD <- function(d, t0) pnbinom(d, shape, mu=mu(t0))
+      dD <- function(d, t0) dnbinom(d, shape, mu=mu(t0))
+      qD <- function(p, t0) qnbinom(p, shape, mu=mu(t0))
+      
+   } else if (best_dist=='Poisson') {
+      
+      mu <- function(.t0) {
+         if (length(best_par) == 2){
+            return(exp(best_par[1] + best_par[2] / max_t0 * as.numeric(.t0)))
+         }
+         return(best_par[1])
+      }
+      
+      pD <- function(d, t0) ppois(d, mu(t0))
+      dD <- function(d, t0) dpois(d, mu(t0))
+      qD <- function(p, t0) qpois(p, mu(t0))
+      
+   } else {  # best_dist=='Weibull'
+      shape <- best_par[1]
+      
+      scale <- function(.t0) {
+         if (length(best_par) == 3) {
+            return(exp(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0)) / gamma(1 + 1 / shape))
+         }
+         return(best_par[2] / gamma(1 + 1 / shape))
+      }
+      
+      pD <- function(d, t0) pweibull(d, shape, scale(t0))
+      qD <- function(p, t0) ceiling(qweibull(p, shape, scale(t0)))
+      dD <- function(d, t0) {
+         sapply(d, function(.d) {
+            if (.d == 0) 0
+            else pD(.d, t0) - pD(.d - 1, t0) 
+         })
       }
    }
-   
-   if (show_qqplot) {
-      qqplot(duration, qD(ecdf(duration)(duration), t0),
-             xlab = 'Empirical observations',
-             ylab = 'Theorical quantiles')
-      abline(0, 1, col = 'blue')
-   }
-   
    return(list(
       "density" = dD,
       "distribution" = pD,
       "quantiles" = qD,
-      'params' = best_param
+      'params' = best_par
    ))
 }
 
@@ -815,6 +1023,7 @@ calculate_excedences <- function(data, treshold, calculate_W=T, n_print=0) {
    if (calculate_W) {
       data <- calculate_interoccurence_times(data, n_print)
    }
+   data['t0'] <- (data$start_date - min(data$start_date)) %>% as.numeric()
    
    return(data)
 }
@@ -914,6 +1123,7 @@ treshold_selection <- function(data, u_vec, method='bader', gf_test='ad',
       print(paste("Cramer-von Mises p-value:", gpdCvm(X[X>u]-u)$p.value), quote=F)
 
       if (verbose > 1){
+         cat("GPD parameters:", params, fill=T)
          car::qqPlot(X[X>u]-u, 'GPD',
                      shape=params[1],
                      scale=params[2],
@@ -995,6 +1205,7 @@ verify_serial_dependence <- function(data, max_lag=1, seed=2021, return_xtable=F
 
    cat("\n Serial dependence test:", fill=T)
    print(pvalues_stats)
+   print(quantile(pvalues, 0.05))
    
    if (return_xtable) {
       cat("\n", fill = T)
@@ -1076,158 +1287,6 @@ eval_dependence_trend <- function(data, variable='W', stride=50) {
 }
 
 
-copula_selection <- function(data, variable='W', dep_trend=F, family_set=NA,
-                             gofTest='None', seed=42) {
-   #' Fonction qui sélectionne la copule la plus adéquate parmi toutes les 
-   #' copules programmées dans la librairie VineCopula.
-   #' 
-   #' @param data (tibble): DataFrame tibble contenant les colonnes suivantes:
-   #'        - excedence : L'excédent de seuil pour les précipitations.
-   #'        - W : les temps inter-périodes de précipitations extrêmes.
-   #' @param variable (str): Le nom de la colonne utilisée pour vérifier une 
-   #'        tendance dans la dépendance avec la variable d'excédent de seuil.
-   #' @param dep_trend (bool): Y-a-t'il des signes de tendances dans la dépendance ?
-   #' @param family_set (int): Vecteur des choix possibles. Chaque famille 
-   #'        implantée dans la librairie VineCopula comporte un chiffre de 
-   #'        référence comme suit:
-   #'        0 = independence copula 
-   #         1 = Gaussian copula 
-   #         2 = Student t copula (t-copula) 
-   #         3 = Clayton copula 
-   #         4 = Gumbel copula 
-   #         5 = Frank copula 
-   #         6 = Joe copula 
-   #         7 = BB1 copula 
-   #         8 = BB6 copula 
-   #         9 = BB7 copula 
-   #         10 = BB8 copula 
-   #         13 = rotated Clayton copula (180 degrees;  survival Clayton'') \cr `14` = rotated Gumbel copula (180 degrees; survival Gumbel”) 
-   #         16 = rotated Joe copula (180 degrees;  survival Joe'') \cr `17` = rotated BB1 copula (180 degrees; survival BB1”)
-   #         18 = rotated BB6 copula (180 degrees;  survival BB6'')\cr `19` = rotated BB7 copula (180 degrees; survival BB7”)
-   #         20 = rotated BB8 copula (180 degrees; “survival BB8”)
-   #         23 = rotated Clayton copula (90 degrees) 
-   #         '24' = rotated Gumbel copula (90 degrees) 
-   #         '26' = rotated Joe copula (90 degrees) 
-   #         '27' = rotated BB1 copula (90 degrees) 
-   #         '28' = rotated BB6 copula (90 degrees) 
-   #         '29' = rotated BB7 copula (90 degrees) 
-   #         '30' = rotated BB8 copula (90 degrees) 
-   #         '33' = rotated Clayton copula (270 degrees) 
-   #         '34' = rotated Gumbel copula (270 degrees) 
-   #         '36' = rotated Joe copula (270 degrees) 
-   #         '37' = rotated BB1 copula (270 degrees) 
-   #         '38' = rotated BB6 copula (270 degrees) 
-   #         '39' = rotated BB7 copula (270 degrees) 
-   #         '40' = rotated BB8 copula (270 degrees) 
-   #         '104' = Tawn type 1 copula 
-   #         '114' = rotated Tawn type 1 copula (180 degrees) 
-   #         '124' = rotated Tawn type 1 copula (90 degrees) 
-   #         '134' = rotated Tawn type 1 copula (270 degrees) 
-   #         '204' = Tawn type 2 copula 
-   #         '214' = rotated Tawn type 2 copula (180 degrees) 
-   #         '224' = rotated Tawn type 2 copula (90 degrees) 
-   #         '234' = rotated Tawn type 2 copula (270 degrees)
-   #' 
-   #' @param gofTest (str): L'une de ces options suivantes:
-   #'        - "white" = Test d'adéquation basé sur la matrice d'information de 
-   #'        White (White, 1982;  Huang and Prokhorov (2011))
-   #'        - "Kendall" = Test d'adéquation basé sur le processus de Kendall  
-   #'        (Wang and Wells, 2000; Genest et al., 2006)
-   #'        - "None" = Aucun test d'adéquation n'est effectué.
-   #' @param seed (int): Ancrage de simulation pour pouvoir reproduire les 
-   #'        résultats.
-   #' 
-   #' @return un objet de la classe BiCop (voir le package VineCopula).
-   set.seed(seed)
-   
-   xw <- data %>% select(excedence, all_of(variable)) %>%
-      na.omit()
-   xw[variable] <- xw[variable] %>% unlist() %>% as.numeric()
-   years <- data$start_date %>% year()
-   white_noise <- rnorm(2 * nrow(xw), mean = 0, sd=1e-8) %>% matrix(ncol = 2)
-   xw <- xw + white_noise
-   uu <- pobs(xw)
-   
-   # BiCopCompare(uu[,1], uu[,2])
-   bestCopula <- BiCopSelect(uu[,1], uu[,2], familyset = family_set, indeptest = T)
-
-   if (dep_trend){
-      copula_nll.1 <- function(params) {
-         nll_copula <- function(year) {
-            u <- uu[which(years == year), ]
-            par <- params[1] + params[2] * year
-            return(-sum(log(
-               BiCopPDF(uu[, 1], uu[, 2], bestCopula$family, par = par)
-            )))
-         }
-         return(sum(sapply(years, nll_copula)))
-      }   
-      copula_nll.2 <- function(params) {
-         nll_copula <- function(year) {
-            u <- uu[which(years == year), ]
-            par <- params[1] + params[2] * year**2
-            return(-sum(log(
-               BiCopPDF(uu[, 1], uu[, 2], bestCopula$family, par = par)
-            )))
-         }
-         return(sum(sapply(years, nll_copula)))
-      }   
-      copula_nll.3 <- function(params) {
-         nll_copula <- function(year) {
-            u <- uu[which(years == year),]
-            par <- params[1] + params[2] * year + params[3] * year**2
-            return(-sum(log(
-               BiCopPDF(uu[, 1], uu[, 2], bestCopula$family, par = par)
-            )))
-         }
-         return(sum(sapply(years, nll_copula)))
-      }
-      
-      optim.1 <- optim(c(bestCopula$par, 0), copula_nll.1)
-      optim.2 <- optim(c(bestCopula$par, 0), copula_nll.2)
-      optim.3 <- optim(c(optim.1$par, 0), copula_nll.3)
-      
-      .aic <- c(
-         bestCopula$AIC,
-         aic.1 <- 2 * (2 - optim.1$value),
-         aic.2 <- 2 * (2 - optim.2$value),
-         aic.2 <- 2 * (3 - optim.3$value)
-      )
-      best <- which.min(.aic)
-      params <- list(bestCopula$par, optim.1$par, optim.2$par, optim.3$par)
-      models <- c('a', "a+bt", "a+bt^2", "a+bt+ct^2")
-      cat("best model:", models[[best]], fill=T)
-      cat("parameters:", params[[best]], fill=T)
-   }
-   
-   print(bestCopula, quote = F)
-   cat("Kendall's tau", fill=T)
-   cat("Empirical:", corKendall(as.matrix(xw))[2], fill=T)
-   cat("Theorical:", BiCopPar2Tau(
-      bestCopula$family, par=bestCopula$par, par2=bestCopula$par2),
-      fill=T)
-   
-   if (grepl('BB', bestCopula$familyname)) {
-      gofTest = 'kendall'
-   }
-   
-   if (gofTest == 'white') {
-      cat("Goodness-of-fit test of White", fill=T)
-      gf_test <- BiCopGofTest(uu[,1], uu[,2], obj = bestCopula, method='white')
-      cat("Statistic:", round(gf_test$statistic, 4), ', ')
-      cat("p-value:", gf_test$p.value)
-   } else if (gofTest == 'kendall'){
-      cat("Goodness-of-fit test of Kendall", fill=T)
-      gf_test <- BiCopGofTest(uu[,1], uu[,2], obj = bestCopula, method='kendall')
-      cat("Cramer-von Mises statistic:", round(gf_test$statistic.CvM, 4), ', ')
-      cat("p-value:", gf_test$p.value.CvM, fill=T)
-      cat("Kolmogorv-Smirnov statistic:", round(gf_test$statistic.KS, 4), ', ')
-      cat("p-value:", gf_test$p.value.KS, fill=T)
-   }
-   
-   return(bestCopula)
-}
-
 copula_selection.XZ <- function(data, dep_trend=F, family_set=NA,
                                 gofTest='None', seed=42) {
    #' Fonction qui sélectionne la copule la plus adéquate parmi toutes les 
@@ -1292,8 +1351,8 @@ copula_selection.XZ <- function(data, dep_trend=F, family_set=NA,
    
    XZ <- data %>% select(-year) %>% na.omit()
    years <- data$year
-   white_noise <- rnorm(2 * nrow(XZ), mean = 0, sd=1e-8) %>% matrix(ncol = 2)
-   XZ <- XZ + white_noise
+   # white_noise <- rnorm(2 * nrow(XZ), mean = 0, sd=1e-8) %>% matrix(ncol = 2)
+   # XZ <- XZ + white_noise
    uu <- pobs(XZ)
    
    # BiCopCompare(uu[,1], uu[,2])
@@ -1368,24 +1427,23 @@ copula_selection.XZ <- function(data, dep_trend=F, family_set=NA,
    return(bestCopula)
 }
 
-simulate_annual_prcp <- function(years, W_fitted, D_fitted, params_GPD,
-                                 best_copula.W, best_copula.D, best_copula.XZ,
-                                 Z_lm, treshold, nsim=1e+3, seed=42) {
+
+simulate_annual_prcp <- function(years, Z_fitted, W_fitted, D_fitted, params_GPD,
+                                 RVM, best_copula.XZ, treshold, nsim=1e+3, seed=2021) {
    #' Fonction qui simule les précipitations annuelles totales pour les années
    #' spécifiées.
    #' 
    #' @param years (int): Vecteur donnant les années pour lesquelles on désire
    #'        faire les simulations.
+   #' @param Z_fitted (list): Le résultat de la fonction fit_Z.
    #' @param W_fitted (list): Le résultat de la fonction fit_W.
    #' @param D_fitted (list): Le résultat de la fonction fit_duration
    #' @param params_GPD (float): Le vecteur des paramètres de la loi GPD, tels
    #'        que sortis par la fonction fit_GPD.
-   #' @param best_copula.W (list): Le résultat de la fonction copula_selection 
-   #'        pour modéliser la dépendance entre les variables X-u|X>u et W.
-   #' @param best_copula.D (list): Le résultat de la fonction copula_selection 
-   #'        pour modéliser la dépendance entre les variables X-u|X>u et D.
-   #' @param Z_lm (lm): Modèle linéaire entraîné sur les précipitations 
-   #'        saisonnières
+   #' @param RVM (RVineMatrix): Un objet de la classe RVineMatrix 
+   #'        du package VineCopula.
+   #' @param best_copula.XZ (list): Le résultat de la fonction copula_selection.XZ
+   #'        pour modéliser la dépendance entre les variables V et Z.
    #' @param nsim (int): Le nombre de simulations désiré.
    #' @param seed (int): L'ancrage de simulations.
    eps <- 1e-8
@@ -1397,31 +1455,31 @@ simulate_annual_prcp <- function(years, W_fitted, D_fitted, params_GPD,
       right_join(data.normales, by='year') %>%
       rename(X = annual_extremes,
              Z = total_prcp)
+   
+   T0 <- data.extremes$start_date %>% min()
+   
    Fn_X <- ecdf(data_XZ$X)
    
    
    simul_annual_prcp <- function(.year) {
       qw <- W_fitted$quantiles
       qD <- D_fitted$quantiles
+      qZ <- Z_fitted$quantiles
       
       Ti <- as.Date(paste0(as.character(.year), '-04-01'))
-      t_max <- as.Date(paste0(as.character(.year), '-06-30'))
+      Ti <- (Ti - T0) %>% as.numeric()
+      t_max <- Ti + 91
       N_max <- 30
       
-      u.WX <- BiCopSim(N_max, obj = best_copula.W)
-      u.DX <- BiCopCondSim(
-         N = N_max,
-         cond.val = u.WX[, 1],
-         cond.var = 1,
-         obj = best_copula.D
-         )
+      u.XWD <- RVineSim(N_max, RVM)
+
       Wi <- list()
       i <- 0
       while(Ti <= t_max) {
          i <- i + 1
-         Wi <- append(Wi, qw(u.WX[i, 2], Ti))
+         Wi <- append(Wi, qw(u.XWD[i, 2], Ti))
          Ti <- Ti + as.numeric(tail(Wi, 1))
-         Di <- qD(u.DX[i], Ti)
+         Di <- qD(u.XWD[i, 3], Ti)
          Ti <- Ti + Di
       }
       Nt <- i - 1
@@ -1429,18 +1487,16 @@ simulate_annual_prcp <- function(years, W_fitted, D_fitted, params_GPD,
          X <- 0
       } else {
          # Total des précipitations extrêmes
-         X <- sum(treshold + qGPD(u.WX[1:Nt, 1], params_GPD[1], params_GPD[2]))
+         X <- sum(treshold + qGPD(u.XWD[1:Nt, 1], params_GPD[1], params_GPD[2]))
       }
       # Total des précipitations saisonnières
-      Z_mu <- predict.lm(Z_lm, as.data.frame(list("year"=.year)))
-      Z_sd <- summary(Z_lm)$sigma
       u_Z <- BiCopCondSim(
          N = 1,
          cond.val = min(1-eps, max(eps, Fn_X(X))),
          cond.var = 1,
          obj = best_copula.XZ
       )
-      Z <- qnorm(u_Z, Z_mu, Z_sd)
+      Z <- qZ(u_Z, .year)
       # Total des précipitations de l'année
       St <- Z + X
       return(St)
@@ -1459,123 +1515,77 @@ simulate_annual_prcp <- function(years, W_fitted, D_fitted, params_GPD,
 }
 
 
-fit_model <- function(data, nsim=1e+2) {
-   #' Pipeline qui prend en entrée le dataset et qui retourne les fonctions
-   #' nécessaires pour faire une analyse complête du risque et pour vérifier
-   #' l'adéquation du modèle.
+scatterplot_Chaoubi <- function(U, kernel_dist='norm') {
+   #' Fonction implémentée par Ihsan Chaoubi, reprenant la méthode du package 
+   #' VineCopula pour produire le graphique de la structure de dépendence 
+   #' bivarié de chaque paire de v.a. d'un vecteur de pseudo-observations.
    #' 
-   #' @param data (tibble): Les données de précipitations quotidiennes pour 
-   #'        plusieurs années. Ces données doivent inclure des observations pour
-   #'        tous les jours du printemps, soit du 1er avril au 30 juin de 
-   #'        chacune des années. Les champs obligatoires sont:
-   #'        - DATE (Date): La date de l'observation en format as.Date.
-   #'        - PRCP (float): Les précipitations (en mm de pluie)
-   #' @param nsim (int): Nombre de simulations pour étudier les prédictions du
-   #'        modèle.
-   #' 
-   #' @return une liste de fonctions utiles à l'étude complète du risque:
-   #'        - cdf_S: Fonction de répartition conditionnellement à l'année
-   #'        - Var_S: VaR conditionnelle selon l'année
-   #'        - TVaR_S: TVaR conditionnelle selon l'année
-   #'        - global_quantiles: VaR globale (toutes années confondues)
-   #'        - global_cdf: Fonction de répartition globale (toutes années 
-   #'          confondues).
+   #' @param U (matrix): Matrice de pseudos observations où chaque colonne 
+   #'        représente une variable aléatoire. Pour produire les 
+   #'        pseudo-observations, voir la fonction pobs de la librairie copulas.
+   #'        @param kernel_dist (string): Le triangle du bas de la matrice de 
+   #'               graphique produite utilise une méthode par noyeau pour 
+   #'               approximer la forme de la copule. Par défaut, un noyeau 
+   #'               gaussien est utilisé pour effectuer le lissage de la 
+   #'               distribution empirique. Les autres optios possibles sont
+   #'               'uniforme' (Aucun lissage n'est effectué), 'exp' et 'flexp'.
+   require(VineCopula)
+   require(kdecopula)
    
-   cat('preprocessing:', fill=T)
-   data <- preprocess_data(
-      data, 
-      NA.neighbour_days = 2,
-      C.separeting_days = 1
-   )
-   
-   verify_serial_dependence(data, max_lag=1)
-   cat('--------------------------------------------------------', fill = T)
-   
-   # Sélection du seuil de valeurs extrêmes
-   set.seed(42)
-   p_vec <- rnorm(100, mean=0.86, sd=0.04) %>% sort()
-   u_vec <- quantile(data$prcp_agg, probs = p_vec) 
-   u <- treshold_selection(data, u_vec, method='bader', gf_test = 'ad')
-   
-   # Séparation des données en valeurs extrêmes et valeurs saisonnières
-   data.extremes <- calculate_excedences(data, u, calculate_W=T)
-
-   # Entraînement d'un modèle linéaire pour prédire les précipitations 
-   # saisonnières.
-   data.normales <- data %>%
-      filter(prcp_agg < u) %>%
-      select(prcp_agg, start_date) %>%
-      group_by(year(start_date)) %>%
-      summarise(sum(prcp_agg), .groups='drop') %>%
-      rename('year' = `year(start_date)`, total_prcp = `sum(prcp_agg)`)
-
-   Z_lm <- lm(total_prcp ~ year, data=data.normales)
-   car::qqPlot(Z_lm, lwd=0.3, id=F, main="QQ-plot of seasonal prcp")
-   
-   # Entraînement des valeurs extrêmes
-   cat("Mann-Kendall test for extremes:")
-   print(MannKendall(data.extremes$excedence))
-   params_GPD <- fit_GPD(data.extremes$excedence, method = 'mm')
-   
-   # Entraînement de la loi pour les temps inter-événements extrêmes
-   cat("Mann-Kendall test for inter-occurence times:")
-   print(MannKendall(data.extremes$W))
-   W_fitted <- fit_W(data.extremes, show_qqplot=T)
-   
-   # Modélisation de la dépendance
-   data.extremes %>% select(excedence, W) %>% na.omit() %>% 
-      calculate_correlation_WX(alternative = 'greater')
-   
-   eval_dependence_trend(data.extremes, stride=150)
-   
-   best_copula <- copula_selection(
-      data.extremes,
-      dep_trend=F,
-      plot_copula=T,
-      gofTest = 'white')
-   
-   years <- data$start_date %>% year() %>% unique()
-   simulations <- simulate_annual_prcp(years, W_fitted, best_copula, params_GPD,
-                                       Z_lm, treshold = u, nsim = nsim)
-   
-   # Conditionnal functions
-   cdf_S <- function(x, year) {
-      ind <- which(years == year)
-      ecdf(simulations[ind, ])(x)
-   }
-   VaR_S <- function(p, year) {
-      ind <- which(years == year)
-      n <- ncol(simulations)
-      sort(simulations[ind, ])[ceiling(p * n)]
-   }
-   TVaR_S <- function(p, year) {
-      ind <- which(years == year)
-      n <- ncol(simulations)
-      sorted_obs <- sort(simulations[ind, ])
-      VaR <- sorted_obs[ceiling(p * n)]
-      TVaR <- mean(sorted_obs[sorted_obs > VaR])
-      return(TVaR)
-   }
-   
-   # Global functions
-   global_quantiles <- function(p) {
-      simulations <- as.vector(simulations)
-      n <- ncol(simulations)
-      sort(simulations)[ceiling(p * n)]
-   }
-   globap_cdf <- function(x) {
-      vec_sim <- as.vector(simulations)
-      ecdf(vec_sim)(x)
-   }
-   
-   return(
-      list(
-         "distribution" = cdf_S,
-         "quantiles" = VaR_S,
-         "TVaR" = TVaR_S,
-         "global.quantiles" = global_quantiles,
-         "global.cdf" = globap_cdf
+   panel_up <- function(x, y) {
+      points(
+         x, y,
+         cex = 0.3,
+         col = rgb(red = 0, green = 0, blue = 0, alpha = 0.4),
+         pch = 19
       )
-   )
+   }
    
+   panel_lower <-  function(x, y, cc=topo.colors(18), mar=kernel_dist, ...) {
+      # set number of levels and if contour labels are drawn
+      if (length(cc) == 1) {
+         nlvls <- 11
+         dl <- TRUE
+      } else {
+         nlvls <- length(cc)
+         dl <- FALSE
+      }
+      # set levels according to margins
+      if (mar %in% c("norm", "exp", "flexp")) {
+         lvls <- seq(0.0, 0.25, length.out = nlvls)
+      } else if (mar == "unif") {
+         lvls <- seq(0.3, 4, length.out = nlvls)
+      }
+      # set default parameters
+      pars <- list(u1 = x,
+                   u2 = y,
+                   size = 100,
+                   levels = lvls,
+                   margins = mar,
+                   axes = FALSE,
+                   drawlabels = dl)
+      # get non-default parameters
+      #pars <- modifyList(pars, list(...))
+      pars <- modifyList(modifyList(pars, list(col = NULL)), list(col = cc))
+      op <- par(usr = c(-3, 3, -3, 3), new = TRUE)
+      # call BiCopMetaContour
+      do.call(BiCopKDE, pars)
+      r <- round(cor(x,y,method="kendall"), digits=3)
+      text(1, -2.5, bquote( tau~" = "~.(r)), cex = 1.2,col="blue")
+      on.exit(par(op))
+   }
+
+   pairs(
+      as.copuladata(U),
+      labels = c(
+         expression(paste("u" ^ "(X)")),
+         expression(paste("u" ^ "(W)")),
+         expression(paste("u" ^ "(D)"))
+      ),
+      cex.labels = 1.5,
+      diag.panel = NULL,
+      upper.panel = panel_up ,
+      lower.panel = panel_lower,
+      label.pos = 0.5
+   )
 }
