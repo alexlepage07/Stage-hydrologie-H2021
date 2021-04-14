@@ -371,7 +371,7 @@ fit_Z <- function(data, show_qqplot=T) {
 }
 
 
-fit_W <- function(data, heavy_tailed=F) {
+fit_W <- function(data) {
    #' Fonction qui paramétrise la loi des temps inter-occurences des périodes 
    #' de pluies extrêmes selon l'une des trois distributions suivantes:
    #'  - La loi Géométrique
@@ -386,8 +386,8 @@ fit_W <- function(data, heavy_tailed=F) {
    #'        extrêmes.
    #'        - Duration (int): La durée des périodes de pluies extrêmes en
    #'        nombre de jours.
-   #' @param heavy_tailed (bool): Est-ce que la distribution présente une queue
-   #'        très lourde ? Dans l'affirmative, une loi GP sera paramétrée.
+   #'        - t0 (int): start_date traduit en format numérique avec point de 
+   #'        départ, la première observation du jeu de données.
    #'        
    #' @return Une liste:
    #'        - density (func): Fonction de densité de probabilités paramétrée.
@@ -483,131 +483,18 @@ fit_W <- function(data, heavy_tailed=F) {
       nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
       return(nll)
    }
-   
-   pareto_nll <- function(param, trend) {
-      shape <- param[1]
-      if (trend) {
-         scale <- function(.t) {
-            return(exp(param[2] + param[3] * as.numeric(.t)))
-         }
-      } else {
-         scale <- function(.t) param[2]
-      }
-      
-      cdf <- function(w, scales) {
-         mapply(pPar, q=w, scale=scales, shape=shape)
-      }
-      
-      pmf <- function(w, scales) {
-         f <- function(.w, .sig) {
-            if (.w == 0) return(0)
-            pPar(.w+1, shape, .sig) - pPar(.w, shape, .sig)
-         }
-         mapply(f, w, scales)
-      }
-      
-      if (min(shape, scale(t0)) <= 0) return(0)
-      
-      nll <- -sum(log(pmf(W, scale(t0))))
-      nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
-      return(nll)
-   }
-
-   if(heavy_tailed) {
-      
-      fit_W_pareto <- function(init_par, trend, quiet=T, seed=2021) {
-         require(MHadaptive)
-         
-         prior_reg <- function(param, trend) {
-            
-            prior_shape <- dgamma(param[1], 3, 1, log = T)
-            
-            if (trend) {
-               prior_a <- dnorm(param[2], init_par[2], 2, log=T)
-               prior_b <- dnorm(param[3], 0, 1, log=T)
-               prior_scale <- prior_a + prior_b
-            } else {
-               prior_scale <- dgamma(param[2], 15, 1/5, log=T)
-            }
-            return(prior_shape + prior_scale)
-         }
-         
-         li_func <- function(param, trend) {
-            return(prior_reg(param, trend) - pareto_nll(param, trend))
-         }
-         
-         if (trend) {
-            par_names <- c('shape', 'a', 'b')
-         } else {
-            par_names <- c('shape', 'scale')
-         }
-         
-         set.seed(seed)
-         mcmc_r <- Metro_Hastings(
-            li_func = li_func,
-            pars = init_par,
-            par_names = par_names,
-            iterations = 5e+4,
-            burn_in = 1e+4,
-            quiet=T,
-            trend=trend
-         )
-         init_par <- apply(mcmc_r$trace, 2, getmode)
-         cat("prelim_pars:", init_par, fill=T)
-         
-         mcmc_r <- Metro_Hastings(
-            li_func = li_func,
-            pars = init_par,
-            prop_sigma = mcmc_r$prop_sigma,
-            par_names = par_names,
-            iterations = 5e+4,
-            burn_in = 1e+4,
-            quiet=T,
-            trend=trend
-         )
-         par <- apply(mcmc_r$trace, 2, getmode)
-         names(par) <- par_names
-         value <- pareto_nll(par, trend)
-         cat('Pareto, Trend=', trend, ', value:', value, fill=T)
-         cat('parameters', par, fill=T)
-         return(list(
-            "par" = par,
-            "value" = value
-         ))
-         
-         unloadNamespace("MHadaptive")
-         unloadNamespace("MASS")
-      }
-      
-      # No trend
-      init_par <- c(2, mean(W))
-      cat("Pareto initial parameters:", init_par, fill=T)
-      pareto_notrend <- fit_W_pareto(init_par = init_par, trend=F)
-      
-      # With trend
-      init_par <- pareto_notrend$par
-      pareto_trend <- fit_W_pareto(
-         init_par = c(init_par[1], log(init_par[2]), 0),
-         trend=T)
-      
-   } else {
-      pareto_notrend <- list(par = NA, value = NA)
-      pareto_trend <- list(par = NA, value = NA)
-   }
 
    optimizations <- list(
       # With trend
       optim_geom_trend <- optim(c(mean(W), 0), geom_nll, gr=NULL, trend=T),
       optim_nbin_trend <- optim(c(1, mean(W), 0), nbin_nll, gr=NULL, trend=T),
       optim_weib_trend <- optim(c(1, log(mean(W)), 0), weibull_nll, gr=NULL, trend=T),
-      pareto_trend,
       # Without trend
       optim_geom_notrend <- list(
          "par" = mean(W),
          "value" = geom_nll(mean(W), trend=F)),
       optim_nbin_notrend <- optim(c(1, mean(W)), nbin_nll, gr=NULL, trend=F),
-      optim_weib_notrend <- optim(c(1, mean(W)), weibull_nll, gr=NULL, trend=F),
-      pareto_notrend
+      optim_weib_notrend <- optim(c(1, mean(W)), weibull_nll, gr=NULL, trend=F)
    )
    
    aics <- cbind(
@@ -615,21 +502,19 @@ fit_W <- function(data, heavy_tailed=F) {
       aic_geom_trend = 2 * (2 + optim_geom_trend$value),
       aic_nbin_trend = 2 * (3 + optim_nbin_trend$value),
       aic_weib_trend = 2 * (3 + optim_weib_trend$value),
-      aic_pare_trend  = 2 * (3 + pareto_trend$value),
       # Without trend
       aic_geom_notrend = 2 * (1 + optim_geom_notrend$value),
       aic_nbin_notrend = 2 * (2 + optim_nbin_notrend$value),
-      aic_weib_notrend = 2 * (2 + optim_weib_notrend$value),
-      aic_pare_notrend  = 2 * (2 + pareto_notrend$value)
+      aic_weib_notrend = 2 * (2 + optim_weib_notrend$value)
    )
    best <- which.min(aics)
    print(aics)
    
    best_par <- optimizations[[best]]$par
    best_dist <- rep(
-      c('geometric', 'Negative binomial', 'Weibull', "Pareto"), 2)[best]
+      c('geometric', 'Negative binomial', 'Weibull'), 2)[best]
    
-   trend <- if (best < 5) "with trend" else "whitout trend"
+   trend <- if (best < 4) "with trend" else "whitout trend"
    cat("\nBest distribution:", best_dist, trend, fill=T)
    cat("Parameters:", best_par, fill=T)
    
@@ -660,7 +545,7 @@ fit_W <- function(data, heavy_tailed=F) {
       dW <- function(w, t0) dnbinom(w, shape, mu=mu(t0))
       qW <- function(p, t0) qnbinom(p, shape, mu=mu(t0))
       
-   } else if (best_dist=='Weibull') {
+   } else {  # best_dist=='Weibull')
       shape <- best_par[1]
       
       scale <- function(.t0) {
@@ -679,29 +564,279 @@ fit_W <- function(data, heavy_tailed=F) {
             })
       }
       
-   } else { # best_dist=='Pareto'
+   } 
+   
+   return(list(
+      "density" = dW,
+      "distribution" = pW,
+      "quantiles" = qW,
+      'params' = best_par
+   ))
+}
+
+
+fit_W_extremes <- function(data) {
+   #' Fonction qui paramétrise la loi des temps inter-occurences des périodes 
+   #' de pluies extrêmes selon l'une des trois distributions suivantes:
+   #'  - La loi Weibull
+   #'  - La famille de lois GPD
+   #'  - La famille de lois GEV
+   #' 
+   #' @param data (tibble): Base de données tibble contenant les variables 
+   #'        suivantes:
+   #'        - W (float): Les temps inter-occurences des périodes de pluies
+   #'        extrêmes.
+   #'        - start_date (Date): La date de début des périodes de pluies
+   #'        extrêmes.
+   #'        - Duration (int): La durée des périodes de pluies extrêmes en
+   #'        nombre de jours.
+   #'        - t0 (int): start_date traduit en format numérique avec point de 
+   #'        départ, la première observation du jeu de données.
+   #'
+   #' @return Une liste:
+   #'        - density (func): Fonction de densité de probabilités paramétrée.
+   #'        - distribution (func) Fonction de répartition des probabilités.
+   #'        - quantiles (func): Fonction quantile paramétrée.
+   #'        
+   #'        Les paramètres utilisés pour ces deux fonctions sont:
+   #'        - w (float): Les temps inter-occurences d'événements extrêmes.
+   #'        - t0 (Date ou int): Date du début
+   
+   data_time <- data.extremes %>% select(W, start_date, t0, duration)
+   W <- data_time$W %>% unlist(use.names = F)
+   n <- length(W)
+   
+   t0 <- (data_time$t0 + data_time$duration) %>% as.numeric()
+   max_t0 <- max(t0)
+   t0 <- t0 / max_t0
+   
+   residual_times <- function(data_time) {
+      t <- data_time$start_date %>% year() %>% unlist(use.names = F)
+      min_year <- min(t)
+      n_years <- max(t) - min_year + 1
+      res <- numeric(n_years)
+      .t0 <- numeric(n_years)
+      for (i in 1:n_years) {
+         m <- min_year + i - 1
+         annual_times <- data_time %>% filter(year(start_date) == m)
+         .t0[i] <- as.Date(paste0(as.character(m), '-04-01'))
+         cum_time <- sum(annual_times$W, annual_times$duration)
+         .t0[i] <- .t0[i] + cum_time
+         res[i] <- 91 - cum_time
+      }
+      .t0 <- (.t0 - min(.t0)) / max_t0
+      return(list("res"=res, "t0"=.t0, 'years'=seq(min_year, max(t), by=1)))
+   }
+   res <- residual_times(data_time)
+   
+   cat("Mann-Kendall's test:", fill=T)
+   print(MannKendall(W))
+   
+   
+   Weib_nll <- function(param, trend) {
+      shape <- param[1]
       
-      if (length(best_par) == 3) {
-         shape <- best_par["Shape (Intercept)"]
+      scale <- function(.t0) {
+         if (trend) {
+            return(exp(param[2] + param[3] * as.numeric(.t0)) / gamma(1 + 1 / shape))
+         }
+         return(param[2] / gamma(1 + 1 / shape))
+      }
+      
+      cdf <- function(w, scales) {
+         mapply(pweibull, q=w, scale=scales, shape=shape)
+      }
+      
+      pmf <- function(w, scales) {
+         f <- function(.w, .sig) {
+            pweibull(.w+1, shape, .sig) - pweibull(.w, shape, .sig)
+         }
+         mapply(f, w, scales)
+      }
+      
+      if (min(shape, scale(t0)) <= 0) return(NA)
+      nll <- -sum(log(pmf(W, scale(t0))))
+      nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
+      return(nll)
+   }
+   
+   GPD_nll <- function(param, trend) {
+      shape <- param[1]
+      
+      if (trend) {
          scale <- function(.t) {
-            a <- best_par["Scale (Intercept)"]
-            b <- best_par["Scale time"]
-            return(a + b / max_t0 * as.numeric(.t))
+            return(exp(param[2] + param[3] * as.numeric(.t)))
          }
       } else {
-         shape <- best_par['shape']
-         scale <- function(.t) best_par['scale']
+         scale <- function(.t) param[2]
       }
       
-      pW <- function(w, t0) pPar(w, shape, scale(t0))
-      qW <- function(p, t0) ceiling(qPar(p, shape, scale(t0)))
-      dW <- function(w, t0) {
-         sapply(w, function(.w) {
-            if (.w == 0) 0
-            else pD(.w, t0) - pD(.w - 1, t0) 
-         })
+      cdf <- function(w, scales) {
+         mapply(pGPD, q=w, scale=scales, shape=shape)
       }
+      
+      pmf <- function(w, scales) {
+         f <- function(.w, .sig) {
+            if (.w == 0) return(0)
+            pGPD(.w+1, shape, .sig) - pGPD(.w, shape, .sig)
+         }
+         mapply(f, w, scales)
+      }
+      
+      if (min(scale(t0)) <= 0) return(1e+6)
+      
+      nll <- -sum(log(pmf(W, scale(t0))))
+      nll <- nll - sum(log(1 - cdf(res$res, scale(res$t0))))
+      return(nll)
    }
+   
+   fit_extremes <- function(init_par, nll, trend, iterations = 15e+3,
+                            burn_in = 8e+3, quiet=T, seed=2021) {
+      
+      prior_reg <- function(param, trend) {
+         
+         prior_shape <- dnorm(param[1], 0, 0.25, log = T)
+         
+         if (trend) {
+            prior_a <- dnorm(param[2], init_par[2], 3, log=T)
+            prior_b <- dnorm(param[3], 0, 1, log=T)
+            prior_scale <- prior_a + prior_b
+         } else {
+            prior_scale <- dgamma(param[2], 15, 1/5, log=T)
+         }
+         return(prior_shape + prior_scale)
+      }
+      
+      li_func <- function(param, nll, trend) {
+         return(prior_reg(param, trend) - nll(param, trend))
+      }
+      
+      if (trend) {
+         par_names <- c('shape', 'a', 'b')
+      } else {
+         par_names <- c('shape', 'scale')
+      }
+      
+      cat("Initial parameters:", init_par, fill=T)
+      
+      set.seed(seed)
+      mcmc_r <- MHadaptive::Metro_Hastings(
+         li_func = li_func,
+         pars = init_par,
+         par_names = par_names,
+         iterations = 5e+4,
+         burn_in = 1e+4,
+         quiet=T,
+         nll = nll,
+         trend=trend
+      )
+      init_par <- apply(mcmc_r$trace, 2, getmode)
+      cat("Intermediate parameters:", init_par, fill=T)
+      
+      mcmc_r <- MHadaptive::Metro_Hastings(
+         li_func = li_func,
+         pars = init_par,
+         prop_sigma = mcmc_r$prop_sigma,
+         par_names = par_names,
+         iterations = 5e+4,
+         burn_in = 1e+4,
+         quiet=T,
+         nll = nll,
+         trend=trend
+      )
+      par <- apply(mcmc_r$trace, 2, getmode)
+      names(par) <- par_names
+      value <- nll(par, trend)
+      cat('Trend:', trend, 'parameters', par, fill=T)
+      return(list(
+         "par" = par,
+         "value" = value
+      ))
+   
+      
+      # No trend
+      init_par <- c(2, mean(W))
+      cat("Pareto initial parameters:", init_par, fill=T)
+      GPD_notrend <- fit_W_GPD(init_par = init_par, trend=F)
+      
+      # With trend
+      init_par <- GPD_notrend$par
+      GPD_trend <- fit_W_GPD(
+         init_par = c(init_par[1], log(init_par[2]), 0),
+         trend=T)
+      
+   }
+
+   optimizations <- list(
+      # Without trend
+      weib_notrend <- optim(c(1, mean(W)), Weib_nll, gr=NULL, trend=F),
+      {cat("Fit GPD without trend", fill=T)
+      GPD_notrend <- fit_extremes(init_par=c(0, mean(W)), GPD_nll, trend=F)},
+      # Without trend
+      weib_trend <- optim(
+         c(weib_notrend$par[1], log(weib_notrend$par[2]), 0),
+         Weib_nll, gr=NULL, trend=T),
+      {cat("Fit GPD with trend", fill=T)
+      GPD_trend <- fit_extremes(
+         init_par=c(GPD_notrend$par[1], log(GPD_notrend$par[2]), 0),
+         nll = GPD_nll, trend=T)}
+   )
+   
+   aics <- cbind(
+      # Without trend
+      aic_Wei_notrend = 2 * (2 + weib_notrend$value),
+      aic_GPD_notrend = 2 * (2 + GPD_notrend$value),
+      # With trend
+      aic_Wei_trend = 2 * (3 + weib_trend$value),
+      aic_GPD_trend = 2 * (3 + GPD_trend$value)
+   )
+   best <- which.min(aics)
+   print(aics)
+   
+   best_par <- optimizations[[best]]$par
+   best_dist <- rep(c('Weibull', 'GPD'), 2)[best]
+   
+   trend <- if (best > 2) "with trend" else "whitout trend"
+   cat("\nBest distribution:", best_dist, trend, fill=T)
+   cat("Parameters:", best_par, fill=T)
+   
+   if (best_dist=='Weibull') {
+      shape <- best_par[1]
+      
+      scale <- function(.t0) {
+         if (length(best_par) == 3) {
+            return(exp(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0)) /
+                      gamma(1 + 1 / shape))
+         }
+         return(best_par[2] / gamma(1 + 1 / shape))
+      }
+      
+      pW <- function(w, t0)
+         pweibull(w, shape, scale(t0))
+      qW <- function(p, t0)
+         ceiling(qweibull(p, shape, scale(t0)))
+      
+   } else {  # best_dist == 'GPD'
+      shape <- best_par[1]
+      
+      scale <- function(.t0) {
+         if (length(best_par) == 3) {
+            return(exp(best_par[2] + best_par[3] / max_t0 * as.numeric(.t0)))
+         }
+         return(best_par[2])
+      }
+      
+      pW <- function(w, t0)
+         pGPD(w, shape, scale(t0))
+      qW <- function(p, t0)
+         ceiling(qGPD(p, shape, scale(t0)))
+      
+   }
+   
+   dW <- function(w, t0) {sapply(w, function(.w) {
+      if (.w == 0) 0 else pD(.w, t0) - pD(.w - 1, t0)
+   })}
+
    
    return(list(
       "density" = dW,

@@ -6,9 +6,6 @@ library(Kendall)
 library(copula)
 library(VineCopula)
 
-unloadNamespace("MHadaptive")
-unloadNamespace("MASS")
-
 # Importation des fonctions
 setwd("C:/Users/alexl/Google Drive/1. Université/2. Stage hydrologie/Stage-hydrologie-H2021/Code informatique")
 source("Rainfall_functions.R")
@@ -73,7 +70,7 @@ data <- preprocess_data(  # Appuyer la méthode de NA imputing avec la littérat
 
 # ================== Analyse préliminaire ======================================
 # Vérification de la dépendance séquentielle ----
-verify_serial_dependence(data)
+# verify_serial_dependence(data)
 
 
 # Vérification de la stationnarité ----
@@ -236,6 +233,10 @@ uu[,1] <- uu[,1] %>% pX()
 uu[,2] <- uu[,2] %>% pW(t0+D)
 uu[,3] <- uu[,3] %>% pD(t0)
 
+cor(uu)
+calculate_correlation(uu[,c(2,3)], alternative = 'greater')
+scatterplot_Chaoubi(uu[which(uu[,1]>0 & uu[,2]>0),], kernel_dist='norm')
+
 Matrix = c(1, 0, 0,
            2, 2, 0,
            3, 3, 3) %>% matrix(ncol=3, byrow=T)
@@ -322,7 +323,7 @@ annual_prcp <- data %>%
 car::qqPlot(annual_prcp, "global",
             xlab='Theorical quantiles',
             ylab='Empirical quantiles',
-            lwd=0.5, id=F)
+            lwd=0.5, id=F, line='robust')
 abline(0, 1, col='red')
 
 ks.test(annual_prcp, pglobal)

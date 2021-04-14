@@ -6,9 +6,6 @@ library(Kendall)
 library(copula)
 library(VineCopula)
 
-unloadNamespace("MHadaptive")
-unloadNamespace("MASS")
-
 # Importation des fonctions
 setwd("C:/Users/alexl/Google Drive/1. Université/2. Stage hydrologie/Stage-hydrologie-H2021/Code informatique")
 source("Rainfall_functions.R")
@@ -110,9 +107,8 @@ data.extremes %>%
 hist(data.extremes$W, freq=F,
      xlab='W', ylab='Probability', main=NULL, breaks=20)
 
-W_fitted <- fit_W(data.extremes, heavy_tailed = T)
-unloadNamespace("MHadaptive")
-unloadNamespace("MASS")
+W_fitted <- fit_W_extremes(data.extremes)
+
 
 # Vérifier l'adéquation
 x = data.extremes$W
@@ -138,7 +134,8 @@ dSimul <- function(x) {
 car::qqPlot(x, 'Simul',
             xlab='Theorical quantiles',
             ylab='Empirical quantiles',
-            lwd = 0.5, id = F)
+            lwd = 0.5, id = F,
+            line='robust')
 abline(0, 1, col='red')
 
 
@@ -211,19 +208,22 @@ uu[,1] <- uu[,1] %>% pX()
 uu[,2] <- uu[,2] %>% pW(t0+D)
 uu[,3] <- uu[,3] %>% pD(t0)
 
+cor(uu)
+scatterplot_Chaoubi(uu, kernel_dist='norm')
+
 Matrix = c(1, 0, 0,
            2, 2, 0,
            3, 3, 3) %>% matrix(ncol=3, byrow=T)
 RVineMatrixCheck(Matrix)
 
 # BiCopCompare(uu[,1], uu[,2], familyset = -c(1,2))
-familyset_12 <- c(0, 5, 13, 4)
+familyset_12 <- c(0, 5, 13, 6)
 
 # BiCopCompare(uu[,1], uu[,3], familyset = -c(1,2))
 familyset_13 <- c(4, 13, 114, 7)
 
 # BiCopCompare(uu[,2], uu[,3], familyset = -c(1,2))
-familyset_23 <- c(5, 13, 10, 104)
+familyset_23 <- c(5, 13, 104, 0)
 
 cop12 <- BiCopEstList(uu[,1], uu[,2], familyset = familyset_12, rotation=F)
 cop13 <- BiCopEstList(uu[,1], uu[,3], familyset = familyset_13, rotation=F)
@@ -305,7 +305,8 @@ annual_prcp <- data %>%
 car::qqPlot(annual_prcp, "global",
             xlab='Theorical quantiles',
             ylab='Empirical quantiles',
-            lwd=0.5, id=F, ylim=c(45,275))
+            lwd=0.5, id=F, ylim=c(45,275),
+            line='robust')
 abline(0, 1, col='red')
 
 ks.test(annual_prcp, pglobal)
